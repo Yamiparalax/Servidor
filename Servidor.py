@@ -690,21 +690,10 @@ class CardKanban(QFrame):
         self.lbl_titulo.setMinimumHeight(48)
         self.lbl_titulo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
 
-        self.lbl_ultima_exec = QLabel("ÚLTIMA EXEC: -")
-        self.lbl_ultima_exec.setObjectName("linhaInfo")
-        self.lbl_ultima_exec.setWordWrap(True)
-
-        self.lbl_proxima_exec = QLabel("PRÓXIMA EXEC: -")
-        self.lbl_proxima_exec.setObjectName("linhaInfo")
-        self.lbl_proxima_exec.setWordWrap(True)
-
-        self.lbl_modo_exec = QLabel("MODO EXEC: -")
-        self.lbl_modo_exec.setObjectName("linhaInfo")
-        self.lbl_modo_exec.setWordWrap(True)
-
-        self.lbl_status_exec = QLabel("STATUS: -")
-        self.lbl_status_exec.setObjectName("linhaInfo")
-        self.lbl_status_exec.setWordWrap(True)
+        self.lbl_ultima_exec = self._criar_label_info("ÚLTIMA EXEC: -")
+        self.lbl_proxima_exec = self._criar_label_info("PRÓXIMA EXEC: -")
+        self.lbl_modo_exec = self._criar_label_info("MODO EXEC: -")
+        self.lbl_status_exec = self._criar_label_info("STATUS: -")
 
         self.lbl_tempo_exec = QLabel("")
         self.lbl_tempo_exec.setObjectName("linhaDestaque")
