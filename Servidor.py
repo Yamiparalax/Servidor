@@ -455,20 +455,20 @@ class EstilosGUI:
     @staticmethod
     def obter_paleta():
         return {
-            "bg_fundo": "#0B1220",
-            "bg_card": "#111827",
-            "bg_card_hover": "#1B2435",
-            "destaque": "#E11D48",
-            "verde": "#34D399",
-            "sucesso": "#34D399",
-            "amarelo": "#F59E0B",
-            "aviso": "#FBBF24",
-            "azul": "#2563EB",
-            "branco": "#F8FAFC",
-            "texto_sec": "#94A3B8",
-            "borda_suave": "#1F2937",
-            "borda_suave_clara": "#2E3A4E",
-            "gradient_top": "linear-gradient(90deg, #0EA5E9, #E11D48)",
+            "bg_fundo": "#0b1323",
+            "bg_card": "rgba(255,255,255,0.06)",
+            "bg_card_hover": "rgba(255,255,255,0.12)",
+            "destaque": "#0A84FF",
+            "verde": "#30D158",
+            "sucesso": "#30D158",
+            "amarelo": "#FFD60A",
+            "aviso": "#FF9F0A",
+            "azul": "#64D2FF",
+            "branco": "#F5F7FB",
+            "texto_sec": "#9FB1CC",
+            "borda_suave": "rgba(255,255,255,0.08)",
+            "borda_suave_clara": "rgba(255,255,255,0.14)",
+            "gradient_top": "linear-gradient(135deg, rgba(100,210,255,0.9), rgba(10,132,255,0.85), rgba(162,132,255,0.95))",
         }
 
     @staticmethod
@@ -479,6 +479,12 @@ class EstilosGUI:
             background-color: {p['bg_fundo']};
             font-family: "Montserrat", "Segoe UI", sans-serif;
             color: {p['branco']};
+        }}
+        QMainWindow {{
+            background: radial-gradient(circle at 20% 20%, rgba(255,255,255,0.04), transparent 26%),
+                        radial-gradient(circle at 80% 0%, rgba(10,132,255,0.12), transparent 36%),
+                        radial-gradient(circle at 50% 100%, rgba(100,210,255,0.1), transparent 32%),
+                        {p['bg_fundo']};
         }}
         QSplitter::handle {{
             background-color: {p['borda_suave']};
@@ -495,20 +501,22 @@ class EstilosGUI:
             color: {p['branco']};
         }}
         QLineEdit {{
-            background-color: {p['bg_card']};
-            border-radius: 6px;
-            border: 1px solid {p['borda_suave']};
-            padding: 6px 10px;
+            background-color: rgba(255,255,255,0.08);
+            border-radius: 10px;
+            border: 1px solid {p['borda_suave_clara']};
+            padding: 8px 12px;
             color: {p['branco']};
             font-size: 12px;
             selection-background-color: {p['destaque']};
+            box-shadow: 0 8px 24px rgba(0,0,0,0.25);
         }}
         QLineEdit::placeholder {{
-            color: #777777;
+            color: rgba(255,255,255,0.45);
         }}
         QLineEdit:focus {{
             border: 1px solid {p['destaque']};
-            background-color: #222222;
+            background-color: rgba(255,255,255,0.12);
+            box-shadow: 0 10px 30px rgba(10,132,255,0.25);
         }}
         QCheckBox {{
             spacing: 5px;
@@ -569,6 +577,7 @@ class EstilosGUI:
             background-color: {p['bg_card']};
             border-radius: 12px;
             border: 1px solid {p['borda_suave_clara']};
+            box-shadow: 0 16px 38px rgba(0,0,0,0.28);
         }}
         QListWidget#listaNavegacao::item {{
             padding: 12px 10px;
@@ -580,9 +589,11 @@ class EstilosGUI:
         QListWidget#listaNavegacao::item:selected {{
             background: {p['gradient_top']};
             color: #0B1220;
+            box-shadow: 0 12px 26px rgba(10,132,255,0.35);
         }}
         QListWidget#listaNavegacao::item:hover {{
             background-color: {p['bg_card_hover']};
+            color: {p['branco']};
         }}
         QListWidget::item {{
             padding: 5px;
@@ -595,30 +606,31 @@ class EstilosGUI:
         cor = cor_borda if cor_borda else p["borda_suave"]
         return f"""
         QFrame#cardKanban {{
-            background-color: {p['bg_card']};
-            border-radius: 14px;
+            background: linear-gradient(160deg, rgba(255,255,255,0.09), rgba(255,255,255,0.03));
+            border-radius: 16px;
             border: 1px solid {cor};
+            box-shadow: 0 14px 35px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.06);
         }}
         QFrame#cardKanban:hover {{
             background-color: {p['bg_card_hover']};
-            border: 1px solid {p['branco']};
-            box-shadow: 0 0 12px rgba(229, 9, 20, 0.35);
+            border: 1px solid {p['destaque']};
+            box-shadow: 0 18px 42px rgba(10,132,255,0.35);
         }}
         QPushButton {{
-            border-radius: 6px;
-            padding: 8px;
+            border-radius: 8px;
+            padding: 8px 10px;
             font-weight: 800;
-            font-size: 11px;
+            font-size: 10px;
             text-transform: uppercase;
         }}
         QPushButton#botaoExecutar {{
             background-color: {p['destaque']};
             color: #FFFFFF;
             border: none;
-            box-shadow: 0 4px 12px rgba(229, 9, 20, 0.3);
+            box-shadow: 0 10px 28px rgba(10,132,255,0.35);
         }}
         QPushButton#botaoExecutar:hover {{
-            background-color: #f6121d;
+            background-color: #2a93ff;
         }}
         QPushButton#botaoExecutar:disabled {{
             background-color: #4A4A4A;
@@ -630,8 +642,8 @@ class EstilosGUI:
             border: 1px solid {p['destaque']};
         }}
         QPushButton#botaoParar:hover {{
-            background-color: {p['destaque']};
-            color: #FFFFFF;
+            background-color: rgba(10,132,255,0.15);
+            color: {p['branco']};
         }}
         QPushButton#botaoLog {{
             background-color: transparent;
@@ -644,17 +656,17 @@ class EstilosGUI:
         }}
         QLabel#tituloCard {{
             color: {p['branco']};
-            font-size: 20px;
+            font-size: 16px;
             font-weight: 900;
             letter-spacing: 0.5px;
         }}
         QLabel#linhaInfo {{
             color: {p['texto_sec']};
-            font-size: 13px;
+            font-size: 12px;
         }}
         QLabel#linhaDestaque {{
             color: {p['verde']};
-            font-size: 12px;
+            font-size: 11px;
             font-weight: 600;
         }}
         """
@@ -698,18 +710,18 @@ class CardKanban(QFrame):
     def __init__(self, titulo):
         super().__init__()
         self.setObjectName("cardKanban")
-        self.setMinimumSize(QSize(360, 380))
-        self.setMaximumSize(QSize(360, 380))
+        self.setMinimumSize(QSize(250, 280))
+        self.setMaximumSize(QSize(280, 320))
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(12, 12, 12, 12)
-        layout.setSpacing(8)
+        layout.setSpacing(6)
 
         self.lbl_titulo = QLabel(str(titulo).upper())
         self.lbl_titulo.setObjectName("tituloCard")
         self.lbl_titulo.setAlignment(Qt.AlignLeft | Qt.AlignTop)
         self.lbl_titulo.setWordWrap(True)
-        self.lbl_titulo.setMinimumHeight(56)
+        self.lbl_titulo.setMinimumHeight(46)
         self.lbl_titulo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.MinimumExpanding)
 
         self.lbl_ultima_exec = QLabel("ÚLTIMA EXEC: -")
@@ -2157,6 +2169,7 @@ class JanelaServidor(QMainWindow):
                 border-radius: 14px;
                 padding: 14px 18px;
                 border: 1px solid {p_topo['borda_suave_clara']};
+                box-shadow: 0 18px 42px rgba(10,132,255,0.28);
             }}
             QLabel#statusLabel {{
                 color: #0B1220;
@@ -2312,9 +2325,10 @@ class JanelaServidor(QMainWindow):
     def _ir_para_secao(self, secao: str):
         if self.nav_list is None or self.stack is None:
             return
+        alvo = (secao or "").lower().strip()
         for i in range(self.nav_list.count()):
             item = self.nav_list.item(i)
-            if item and item.data(Qt.UserRole) == secao:
+            if item and item.data(Qt.UserRole) == alvo:
                 self.nav_list.setCurrentRow(i)
                 self.stack.setCurrentIndex(i)
                 return
@@ -2467,12 +2481,13 @@ class JanelaServidor(QMainWindow):
             widget.deleteLater()
 
         def adicionar_secao(nome_secao: str, widget: QWidget):
+            chave_secao = nome_secao.lower().strip()
             item = QListWidgetItem(nome_secao)
-            item.setData(Qt.UserRole, nome_secao)
+            item.setData(Qt.UserRole, chave_secao)
             item.setSizeHint(QSize(220, 44))
             self.nav_list.addItem(item)
             self.stack.addWidget(widget)
-            self.navegacao_indices[nome_secao] = self.stack.count() - 1
+            self.navegacao_indices[chave_secao] = self.stack.count() - 1
 
         p = EstilosGUI.obter_paleta()
 
@@ -2544,11 +2559,12 @@ class JanelaServidor(QMainWindow):
             ct = QWidget()
             gd = QGridLayout(ct)
             gd.setContentsMargins(20, 20, 20, 20)
-            gd.setSpacing(20)
+            gd.setSpacing(16)
+            gd.setAlignment(Qt.AlignTop | Qt.AlignLeft)
 
             r = 0
             c = 0
-            max_c = 4
+            max_c = 5
 
             for met in sorted(itens.keys()):
                 try:
@@ -2560,7 +2576,7 @@ class JanelaServidor(QMainWindow):
                     card.btn_log.clicked.connect(partial(self._acao_ver_log, met))
                     gd.addWidget(card, r, c)
                     self.cards[met] = card
-                    self.card_secao[met] = nome_tab
+                    self.card_secao[met] = nome_tab.lower().strip()
                     c += 1
                     if c >= max_c:
                         c = 0
@@ -2811,9 +2827,10 @@ class JanelaServidor(QMainWindow):
             base = met.lower()
             info = self.infos.get(met, {})
             nome_auto = str(info.get("nome_automacao", "")).lower()
+            area = str(info.get("area_solicitante", "")).lower()
             titulo_card = card.lbl_titulo.text().lower()
             visivel = any(
-                termo in campo for campo in (base, nome_auto, titulo_card)
+                termo in campo for campo in (base, nome_auto, titulo_card, area)
             )
             card.setVisible(visivel)
             if visivel:
