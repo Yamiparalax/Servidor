@@ -11,7 +11,9 @@ import psutil
 import shutil
 import gc
 import unicodedata
+import smtplib
 from pathlib import Path
+from email.message import EmailMessage
 from datetime import datetime, timedelta
 from typing import Dict, Any, Callable, Optional
 from functools import partial
@@ -901,7 +903,7 @@ class EstilosGUI:
         }}
         QListWidget#listaNavegacao::item:selected {{
             background: {p['gradient_top']};
-            color: #0B1220;
+            color: {p['branco']};
         }}
         QListWidget#listaNavegacao::item:hover {{
             background-color: {p['bg_card_hover']};
@@ -1215,6 +1217,72 @@ class LogDialog(QDialog):
         layout.addWidget(btn_fechar, alignment=Qt.AlignRight)
 
 
+class NotificadorEmail:
+    def __init__(self, logger):
+        self.logger = logger
+        self.host = os.getenv("SERVIDOR_SMTP_HOST", "").strip()
+        self.porta = int(os.getenv("SERVIDOR_SMTP_PORT", "0") or 0) or 25
+        self.usuario = os.getenv("SERVIDOR_SMTP_USER", "").strip()
+        self.senha = os.getenv("SERVIDOR_SMTP_PASS", "").strip()
+        self.remetente = os.getenv("SERVIDOR_SMTP_FROM", self.usuario).strip()
+        self.usar_tls = os.getenv("SERVIDOR_SMTP_TLS", "").strip().lower() in {"1", "true", "yes", "sim"}
+
+    def _normalizar_destinatarios(self, destinatarios):
+        lista = []
+        for item in destinatarios or []:
+            partes = re.split(r"[;,]", item or "")
+            for p in partes:
+                if p and p.strip():
+                    lista.append(p.strip())
+        return lista
+
+    def enviar(self, assunto, corpo, destinatarios, anexos=None):
+        dest = self._normalizar_destinatarios(destinatarios)
+        if not dest or not self.host or not self.remetente:
+            self.logger.warning(
+                "email_config_incompleta host=%s remetente=%s destinatarios=%s",
+                self.host,
+                bool(self.remetente),
+                dest,
+            )
+            return False
+
+        msg = EmailMessage()
+        msg["Subject"] = assunto
+        msg["From"] = self.remetente
+        msg["To"] = ", ".join(dest)
+        msg.set_content(corpo)
+
+        for anexo in anexos or []:
+            try:
+                p = Path(anexo)
+                if not p.exists():
+                    self.logger.warning("email_anexo_inexistente arquivo=%s", str(anexo))
+                    continue
+                conteudo = p.read_bytes()
+                msg.add_attachment(
+                    conteudo,
+                    maintype="text",
+                    subtype="plain",
+                    filename=p.name,
+                )
+            except Exception as e:
+                self.logger.error("email_anexo_erro arquivo=%s tipo=%s erro=%s", str(anexo), type(e).__name__, e)
+
+        try:
+            with smtplib.SMTP(self.host, self.porta, timeout=10) as smtp:
+                if self.usar_tls:
+                    smtp.starttls()
+                if self.usuario and self.senha:
+                    smtp.login(self.usuario, self.senha)
+                smtp.send_message(msg)
+            self.logger.info("email_enviado assunto=%s para=%s", assunto, ",".join(dest))
+            return True
+        except Exception as e:
+            self.logger.error("email_envio_erro tipo=%s erro=%s", type(e).__name__, e)
+            return False
+
+
 class MonitorSolicitacoes:
     def __init__(
         self,
@@ -1223,14 +1291,19 @@ class MonitorSolicitacoes:
         callback_resolver_metodo,
         callback_checar_permissao,
         callback_enfileirar,
+        diretorio_historico: Path,
+        notificador_email: Optional[NotificadorEmail] = None,
         intervalo_segundos: int = 10,
     ):
         self.logger = logger
         self.dir = diretorio_solicitacoes
         self.dir.mkdir(parents=True, exist_ok=True)
+        self.dir_historico = diretorio_historico
+        self.dir_historico.mkdir(parents=True, exist_ok=True)
         self.callback_resolver_metodo = callback_resolver_metodo
         self.callback_checar_permissao = callback_checar_permissao
         self.callback_enfileirar = callback_enfileirar
+        self.notificador_email = notificador_email
         self.intervalo_segundos = intervalo_segundos
         self._parar = False
         self._thread = threading.Thread(target=self._loop, daemon=True)
@@ -1248,6 +1321,48 @@ class MonitorSolicitacoes:
             login = "_".join(partes[1:]).strip()
             return metodo, login
         return stem.strip(), ""
+
+    def _mover_para_historico(self, arquivo: Path) -> Optional[Path]:
+        try:
+            ts = datetime.now(TZ).strftime("%Y%m%d_%H%M%S")
+            destino = self.dir_historico / f"{arquivo.stem}_{ts}{arquivo.suffix}"
+            destino.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(arquivo), destino)
+            self.logger.info(
+                "solicitacao_arquivo_movido origem=%s destino=%s",
+                str(arquivo),
+                str(destino),
+            )
+            return destino
+        except Exception as e:
+            self.logger.error("solicitacao_mover_erro arquivo=%s tipo=%s erro=%s", str(arquivo), type(e).__name__, e)
+            try:
+                arquivo.unlink(missing_ok=True)
+            except Exception:
+                pass
+            return None
+
+    def _enviar_email_inicio(self, metodo, login, arquivo_anexo):
+        if not self.notificador_email or not login:
+            return
+        assunto = f"Solicitação de método {metodo} em execução"
+        corpo = (
+            "Seu método foi recebido pelo servidor e está em execução. "
+            "Aguarde de 5 a 10 minutos para receber o status da execução."
+        )
+        anexos = [arquivo_anexo] if arquivo_anexo else []
+        self.notificador_email.enviar(assunto, corpo, [login], anexos)
+
+    def _enviar_email_metodo_nao_encontrado(self, metodo, login, arquivo_anexo):
+        if not self.notificador_email or not login:
+            return
+        assunto = f"Solicitação de método {metodo} não localizado"
+        corpo = (
+            "Não foi possível localizar o método solicitado. "
+            "Entre em contato com Carlos.lsilva para confirmar o nome correto."
+        )
+        anexos = [arquivo_anexo] if arquivo_anexo else []
+        self.notificador_email.enviar(assunto, corpo, [login], anexos)
 
     def _loop(self):
         while not self._parar:
@@ -1286,12 +1401,16 @@ class MonitorSolicitacoes:
                                 pass
                             continue
 
+                        alvo_login = str(login_raw or "").strip().lower()
+                        if alvo_login and "@" not in alvo_login:
+                            alvo_login = f"{alvo_login}@c6bank.com"
+
                         metodo_norm, caminho = self.callback_resolver_metodo(metodo_raw)
                         if not caminho:
-                            try:
-                                f.unlink(missing_ok=True)
-                            except Exception:
-                                pass
+                            destino = self._mover_para_historico(f)
+                            self._enviar_email_metodo_nao_encontrado(
+                                metodo_raw, alvo_login, destino
+                            )
                             self.logger.info(
                                 "solicitacao_metodo_nao_encontrado metodo=%s arquivo=%s",
                                 metodo_raw,
@@ -1299,19 +1418,12 @@ class MonitorSolicitacoes:
                             )
                             continue
 
-                        alvo_login = str(login_raw or "").strip().lower()
-                        if alvo_login and "@" not in alvo_login:
-                            alvo_login = f"{alvo_login}@c6bank.com"
-
                         pode = self.callback_checar_permissao(
                             metodo_norm or metodo_raw,
                             alvo_login or "*",
                         )
                         if not pode:
-                            try:
-                                f.unlink(missing_ok=True)
-                            except Exception:
-                                pass
+                            self._mover_para_historico(f)
                             self.logger.info(
                                 "solicitacao_sem_permissao metodo=%s login=%s",
                                 metodo_raw,
@@ -1319,26 +1431,26 @@ class MonitorSolicitacoes:
                             )
                             continue
 
+                        destino = self._mover_para_historico(f)
                         ctx = {
                             "origem": "solicitacao",
                             "usuario": alvo_login,
                             "observacao": conteudo,
                             "justificativa": "Solicitação da área",
+                            "arquivo_solicitacao": str(destino) if destino else "",
                         }
+                        self._enviar_email_inicio(metodo_norm or metodo_raw, alvo_login, destino)
                         self.callback_enfileirar(
                             metodo_norm or metodo_raw,
                             caminho,
                             ctx,
                             datetime.now(TZ),
                         )
-                        try:
-                            f.unlink(missing_ok=True)
-                        except Exception:
-                            pass
                         self.logger.info(
-                            "solicitacao_enfileirada metodo=%s login=%s",
+                            "solicitacao_enfileirada metodo=%s login=%s destino=%s",
                             metodo_norm or metodo_raw,
                             alvo_login,
+                            str(destino) if destino else "",
                         )
                     except Exception as e_arquivo:
                         self.logger.error(
@@ -3420,15 +3532,18 @@ def main():
 
         def enfileirar_solicitacao(metodo, caminho, ctx, quando):
             executor.enfileirar(metodo, caminho, ctx, quando)
+        notificador_email = NotificadorEmail(logger)
 
-        dir_solic = (
+        base_solicitacoes = (
             Path.home()
             / "C6 CTVM LTDA, BANCO C6 S.A. e C6 HOLDING S.A"
             / "Mensageria e Cargas Operacionais - 11.CelulaPython"
             / "graciliano"
             / "novo_servidor"
-            / "solicitacoes_das_areas"
         )
+
+        dir_solic = base_solicitacoes / "solicitacoes_das_areas"
+        dir_hist = base_solicitacoes / "historico_solicitacoes"
 
         _monitor_solic = MonitorSolicitacoes(
             logger,
@@ -3436,6 +3551,8 @@ def main():
             resolver_metodo,
             checar_permissao,
             enfileirar_solicitacao,
+            dir_hist,
+            notificador_email,
             intervalo_segundos=10,
         )
 
@@ -3466,9 +3583,29 @@ def main():
             except Exception as e:
                 logger.error(f"exec_inicio_marcar_ocupado_erro metodo={metodo} erro={e}")
 
+        def enviar_email_final(metodo, contexto, status_txt, log_filho):
+            if contexto.get("origem") != "solicitacao":
+                return
+            usuario = (contexto.get("usuario") or "").strip()
+            if not usuario:
+                return
+            anexos = []
+            arq = contexto.get("arquivo_solicitacao") or ""
+            if arq:
+                anexos.append(arq)
+            if log_filho:
+                anexos.append(log_filho)
+            assunto = f"Solicitação de método {metodo} finalizada ({status_txt})"
+            corpo = f"O método {metodo} foi finalizado com status {status_txt}."
+            notificador_email.enviar(assunto, corpo, [usuario], anexos)
+
         def on_exec_fim(metodo, contexto, rc, log_filho):
             status_txt = "SUCESSO" if rc == 0 else ("SEM DADOS PARA PROCESSAR" if rc == 2 else "FALHA")
             logger.info(f"exec_fim metodo={metodo} rc={rc} status={status_txt}")
+            try:
+                enviar_email_final(metodo, contexto, status_txt, log_filho)
+            except Exception as e:
+                logger.error("exec_fim_email_erro metodo=%s tipo=%s erro=%s", metodo, type(e).__name__, e)
             try:
                 if janela_holder["janela"] is not None:
                     janela_holder["janela"].marcar_metodo_ocupado(metodo, False)
