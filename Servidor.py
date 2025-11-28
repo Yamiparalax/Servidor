@@ -1310,17 +1310,14 @@ class MonitorSolicitacoes:
         self._thread.start()
 
     def _extrair_metodo_login(self, stem: str):
-        if "." in stem:
-            partes = stem.split(".")
-            metodo = ".".join(partes[:-1]).strip()
-            login = partes[-1].strip()
-            return metodo, login
-        if "_" in stem:
-            partes = stem.split("_")
-            metodo = partes[0].strip()
-            login = "_".join(partes[1:]).strip()
-            return metodo, login
-        return stem.strip(), ""
+        texto = stem.strip()
+        if "_" in texto:
+            metodo, login = texto.split("_", 1)
+            return metodo.strip(), login.strip()
+        if "." in texto:
+            metodo, login = texto.split(".", 1)
+            return metodo.strip(), login.strip()
+        return texto, ""
 
     def _mover_para_historico(self, arquivo: Path) -> Optional[Path]:
         try:
@@ -2559,17 +2556,7 @@ class JanelaServidor(QMainWindow):
             QApplication.instance().quit()
 
     def closeEvent(self, event):
-        if self.tray_icon is not None and self.tray_icon.isVisible():
-            self.hide()
-            self.tray_icon.showMessage(
-                "Servidor de Automações",
-                "Servidor rodando em segundo plano.",
-                QSystemTrayIcon.Information,
-                3000,
-            )
-            event.ignore()
-        else:
-            super().closeEvent(event)
+        QApplication.instance().quit()
 
     def _start_monitor_recursos(self):
         if not self.monitor_recursos.isRunning():
@@ -3534,13 +3521,7 @@ def main():
             executor.enfileirar(metodo, caminho, ctx, quando)
         notificador_email = NotificadorEmail(logger)
 
-        base_solicitacoes = (
-            Path.home()
-            / "C6 CTVM LTDA, BANCO C6 S.A. e C6 HOLDING S.A"
-            / "Mensageria e Cargas Operacionais - 11.CelulaPython"
-            / "graciliano"
-            / "novo_servidor"
-        )
+        base_solicitacoes = BASE_DIR / "novo_servidor"
 
         dir_solic = base_solicitacoes / "solicitacoes_das_areas"
         dir_hist = base_solicitacoes / "historico_solicitacoes"
