@@ -2887,32 +2887,76 @@ class JanelaServidor(QMainWindow):
     def atualizar_mapeamento(self, df_exec, df_reg):
         self.atualizar_dados(df_exec, df_reg)
 
+    def _garantir_dt_full(self, df: pd.DataFrame) -> pd.DataFrame:
+        if df is None or df.empty:
+            return pd.DataFrame()
+        df_local = df.copy()
+        if "dt_full" in df_local.columns:
+            try:
+                if not pd.api.types.is_datetime64_any_dtype(df_local["dt_full"]):
+                    df_local["dt_full"] = pd.to_datetime(
+                        df_local["dt_full"], dayfirst=True, errors="coerce"
+                    )
+            except Exception:
+                df_local["dt_full"] = pd.to_datetime(
+                    df_local["dt_full"], dayfirst=True, errors="coerce"
+                )
+            return df_local
+
+        cols = {c.lower(): c for c in df_local.columns}
+        c_data = cols.get("data_exec")
+        c_hora = cols.get("hora_exec")
+        if not c_data:
+            return df_local
+
+        data_txt = df_local[c_data].astype(str).str.strip()
+        if c_hora:
+            hora_txt = df_local[c_hora].astype(str).str.strip()
+            combinado = (data_txt + " " + hora_txt).str.strip()
+        else:
+            combinado = data_txt
+
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=UserWarning)
+            df_local["dt_full"] = pd.to_datetime(
+                combinado, dayfirst=True, errors="coerce"
+            )
+        return df_local
+
+    def _filtrar_execucoes_de_hoje(self):
+        df_local = self._garantir_dt_full(self.df_exec)
+        if df_local.empty:
+            return pd.DataFrame(), {}
+        if "dt_full" not in df_local.columns:
+            return pd.DataFrame(), {}
+        try:
+            hoje = datetime.now(TZ).date()
+            df_dia = df_local[df_local["dt_full"].dt.date == hoje].copy()
+            return df_dia, {c.lower(): c for c in df_dia.columns}
+        except Exception:
+            return pd.DataFrame(), {}
+
     def _recalcular_resumos_execucao(self):
         """Calcula listas de SUCESSO/FALHA/OUTROS para o dia, uma vez por atualização de planilha."""
         self._resumo_sucesso = []
         self._resumo_falhas = []
         self._resumo_outros = []
 
-        df = self.df_exec.copy()
-        if df.empty:
+        df_dia, cols = self._filtrar_execucoes_de_hoje()
+        if df_dia.empty:
             return
 
-        if "dt_full" not in df.columns:
-            return
-
-        cols = {c.lower(): c for c in df.columns}
         c_met = cols.get("metodo_automacao")
         c_stat = cols.get("status")
         if not c_met or not c_stat:
             return
 
-        hoje = datetime.now(TZ).date()
         try:
-            df_hj = df[df["dt_full"].dt.date == hoje].sort_values("dt_full", ascending=False)
+            df_ord = df_dia.sort_values("dt_full", ascending=False)
         except Exception:
-            return
+            df_ord = df_dia
 
-        for _, r in df_hj.iterrows():
+        for _, r in df_ord.iterrows():
             m = str(r[c_met])
             s = str(r[c_stat]).upper()
             h = r["dt_full"].strftime("%H:%M") if pd.notna(r["dt_full"]) else "-"
@@ -3063,7 +3107,7 @@ class JanelaServidor(QMainWindow):
             self._on_busca_text_changed(self.input_busca.text())
 
     def _preencher_cards(self):
-        df = self.df_exec.copy()
+        df, cols = self._filtrar_execucoes_de_hoje()
         if df.empty:
             execs_vazios = self.executor.snapshot_execucao()
             for met, card in self.cards.items():
@@ -3095,16 +3139,6 @@ class JanelaServidor(QMainWindow):
                     card.definir_status_visual(status_txt)
             return
 
-        if "dt_full" not in df.columns:
-            return
-
-        try:
-            hoje = datetime.now(TZ).date()
-            df = df[df["dt_full"].dt.date == hoje]
-        except Exception:
-            return
-
-        cols = {c.lower(): c for c in df.columns}
         c_met = cols.get("metodo_automacao")
         c_stat = cols.get("status")
         c_modo = cols.get("modo_execucao")
