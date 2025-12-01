@@ -1680,13 +1680,16 @@ class SincronizadorPlanilhas:
         df_exec = pd.DataFrame()
         df_reg = pd.DataFrame()
 
+        # reset pastas XLSX
         for pasta in (DIR_XLSX_AUTEXEC, DIR_XLSX_REG):
             try:
+                if pasta.exists():
+                    shutil.rmtree(pasta)
                 pasta.mkdir(parents=True, exist_ok=True)
-                self.logger.info("sincronizador_garantir_pasta_ok pasta=%s", str(pasta))
+                self.logger.info("sincronizador_reset_pasta_ok pasta=%s", str(pasta))
             except Exception as e:
                 self.logger.error(
-                    "sincronizador_garantir_pasta_erro pasta=%s tipo=%s erro=%s",
+                    "sincronizador_reset_pasta_erro pasta=%s tipo=%s erro=%s",
                     str(pasta),
                     type(e).__name__,
                     e,
@@ -2542,7 +2545,6 @@ class JanelaServidor(QMainWindow):
         self._resumo_sucesso = []
         self._resumo_falhas = []
         self._resumo_outros = []
-        self._status_execucao_hoje = {}
 
         # system tray
         self.tray_icon: Optional[QSystemTrayIcon] = None
@@ -2871,7 +2873,6 @@ class JanelaServidor(QMainWindow):
 
         # recalcula resumos (sucesso/falha/outros) só quando planilhas mudam
         self._recalcular_resumos_execucao()
-        self._calcular_status_execucao()
 
         if chaves_mudaram or abas_vazias:
             QTimer.singleShot(0, self._reconstruir_abas)
@@ -2889,76 +2890,32 @@ class JanelaServidor(QMainWindow):
     def atualizar_mapeamento(self, df_exec, df_reg):
         self.atualizar_dados(df_exec, df_reg)
 
-    def _garantir_dt_full(self, df: pd.DataFrame) -> pd.DataFrame:
-        if df is None or df.empty:
-            return pd.DataFrame()
-        df_local = df.copy()
-        if "dt_full" in df_local.columns:
-            try:
-                if not pd.api.types.is_datetime64_any_dtype(df_local["dt_full"]):
-                    df_local["dt_full"] = pd.to_datetime(
-                        df_local["dt_full"], dayfirst=True, errors="coerce"
-                    )
-            except Exception:
-                df_local["dt_full"] = pd.to_datetime(
-                    df_local["dt_full"], dayfirst=True, errors="coerce"
-                )
-            return df_local
-
-        cols = {c.lower(): c for c in df_local.columns}
-        c_data = cols.get("data_exec")
-        c_hora = cols.get("hora_exec")
-        if not c_data:
-            return df_local
-
-        data_txt = df_local[c_data].astype(str).str.strip()
-        if c_hora:
-            hora_txt = df_local[c_hora].astype(str).str.strip()
-            combinado = (data_txt + " " + hora_txt).str.strip()
-        else:
-            combinado = data_txt
-
-        with warnings.catch_warnings():
-            warnings.filterwarnings("ignore", category=UserWarning)
-            df_local["dt_full"] = pd.to_datetime(
-                combinado, dayfirst=True, errors="coerce"
-            )
-        return df_local
-
-    def _filtrar_execucoes_de_hoje(self):
-        df_local = self._garantir_dt_full(self.df_exec)
-        if df_local.empty:
-            return pd.DataFrame(), {}
-        if "dt_full" not in df_local.columns:
-            return pd.DataFrame(), {}
-        try:
-            hoje = datetime.now(TZ).date()
-            df_dia = df_local[df_local["dt_full"].dt.date == hoje].copy()
-            return df_dia, {c.lower(): c for c in df_dia.columns}
-        except Exception:
-            return pd.DataFrame(), {}
-
     def _recalcular_resumos_execucao(self):
         """Calcula listas de SUCESSO/FALHA/OUTROS para o dia, uma vez por atualização de planilha."""
         self._resumo_sucesso = []
         self._resumo_falhas = []
         self._resumo_outros = []
 
-        df_dia, cols = self._filtrar_execucoes_de_hoje()
-        if df_dia.empty:
+        df = self.df_exec.copy()
+        if df.empty:
             return
 
+        if "dt_full" not in df.columns:
+            return
+
+        cols = {c.lower(): c for c in df.columns}
         c_met = cols.get("metodo_automacao")
         c_stat = cols.get("status")
         if not c_met or not c_stat:
             return
 
+        hoje = datetime.now(TZ).date()
         try:
-            df_ord = df_dia.sort_values("dt_full", ascending=False)
+            df_hj = df[df["dt_full"].dt.date == hoje].sort_values("dt_full", ascending=False)
         except Exception:
-            df_ord = df_dia
+            return
 
-        for _, r in df_ord.iterrows():
+        for _, r in df_hj.iterrows():
             m = str(r[c_met])
             s = str(r[c_stat]).upper()
             h = r["dt_full"].strftime("%H:%M") if pd.notna(r["dt_full"]) else "-"
@@ -2969,93 +2926,6 @@ class JanelaServidor(QMainWindow):
                 self._resumo_falhas.append(item_txt)
             else:
                 self._resumo_outros.append(item_txt)
-
-    def _normalizar_nome_metodo(self, nome: str):
-        if not nome:
-            return ""
-        texto = str(nome).strip()
-        if texto.lower().endswith(".py"):
-            texto = texto[:-3]
-        return texto.upper()
-
-    def _normalizar_horarios_texto(self, texto: str):
-        if not texto:
-            return []
-        t = str(texto).strip().lower()
-        if t in {"sem", "sob demanda", "sob_demanda", "sob-demanda"}:
-            return []
-        partes = re.split(r"[,\s;/]+", t)
-        horarios = []
-        for p in partes:
-            p = p.strip()
-            if not p:
-                continue
-            if re.fullmatch(r"\d{1,2}:\d{2}", p):
-                horarios.append(p)
-        return horarios
-
-    def _dias_semana_validos(self, texto: str):
-        if not texto:
-            return set(range(7))
-        dias = set()
-        partes = re.split(r"[,/;\s]+", str(texto).strip().lower())
-        for p in partes:
-            p = p.strip()
-            if not p:
-                continue
-            if p in MAPA_DIAS_SEMANA:
-                dias.add(MAPA_DIAS_SEMANA[p])
-            elif p == "dias_uteis":
-                dias.update({0, 1, 2, 3, 4})
-            elif p == "fds":
-                dias.update({5, 6})
-        if not dias:
-            dias = set(range(7))
-        return dias
-
-    def _calcular_status_execucao(self):
-        df_dia, cols = self._filtrar_execucoes_de_hoje()
-        mapa_exec = {}
-        c_met = cols.get("metodo_automacao")
-        if c_met:
-            for _, row in df_dia.iterrows():
-                nome = self._normalizar_nome_metodo(row.get(c_met))
-                mapa_exec.setdefault(nome, []).append(row.get("dt_full"))
-
-        agora = datetime.now(TZ)
-        status = {}
-        for _, metodos in self.mapeamento.items():
-            for metodo, info in metodos.items():
-                nome_norm = self._normalizar_nome_metodo(metodo)
-                registro = info.get("registro") or {}
-                horarios = self._normalizar_horarios_texto(registro.get("horario") or "")
-                dias_validos = self._dias_semana_validos(registro.get("dia_semana") or "")
-                previstos = len(horarios) if agora.weekday() in dias_validos else 0
-                execucoes = mapa_exec.get(nome_norm, [])
-                executados = len(execucoes)
-                faltantes = previstos - executados
-                proxima = "-"
-                if horarios:
-                    instantes = []
-                    for h_txt in horarios:
-                        try:
-                            h, m = [int(x) for x in h_txt.split(":")]
-                            instantes.append(
-                                agora.replace(hour=h, minute=m, second=0, microsecond=0)
-                            )
-                        except Exception:
-                            continue
-                    if instantes:
-                        futuros = [d for d in instantes if d >= agora]
-                        alvo = min(futuros) if futuros else min(instantes)
-                        proxima = alvo.strftime("%H:%M")
-                status[nome_norm] = {
-                    "executados": executados,
-                    "previstos": previstos,
-                    "faltantes": faltantes if faltantes > 0 else 0,
-                    "proxima": proxima,
-                }
-        self._status_execucao_hoje = status
 
     def _reconstruir_abas(self):
         if self.nav_list is None or self.stack is None:
@@ -3196,16 +3066,12 @@ class JanelaServidor(QMainWindow):
             self._on_busca_text_changed(self.input_busca.text())
 
     def _preencher_cards(self):
-        df, cols = self._filtrar_execucoes_de_hoje()
+        df = self.df_exec.copy()
         if df.empty:
             execs_vazios = self.executor.snapshot_execucao()
             for met, card in self.cards.items():
                 inf = self.infos.get(met, {})
                 card.lbl_area.setText(f"ÁREA: {inf.get('area_solicitante', '-')}")
-                info_exec = self._status_execucao_hoje.get(self._normalizar_nome_metodo(met), {})
-                card.lbl_tempo_exec.setText(
-                    f"HOJE: {info_exec.get('executados', 0)}/{info_exec.get('previstos', 0)} | PRÓXIMA: {info_exec.get('proxima', '-')}"
-                )
                 prox = "-"
                 if self.get_prox_exec:
                     try:
@@ -3232,6 +3098,16 @@ class JanelaServidor(QMainWindow):
                     card.definir_status_visual(status_txt)
             return
 
+        if "dt_full" not in df.columns:
+            return
+
+        try:
+            hoje = datetime.now(TZ).date()
+            df = df[df["dt_full"].dt.date == hoje]
+        except Exception:
+            return
+
+        cols = {c.lower(): c for c in df.columns}
         c_met = cols.get("metodo_automacao")
         c_stat = cols.get("status")
         c_modo = cols.get("modo_execucao")
@@ -3250,10 +3126,6 @@ class JanelaServidor(QMainWindow):
             norm = NormalizadorDF.norm_key(met)
             inf = self.infos.get(met, {})
             card.lbl_area.setText(f"ÁREA: {inf.get('area_solicitante', '-')}")
-            info_exec = self._status_execucao_hoje.get(self._normalizar_nome_metodo(met), {})
-            card.lbl_tempo_exec.setText(
-                f"HOJE: {info_exec.get('executados', 0)}/{info_exec.get('previstos', 0)} | PRÓXIMA: {info_exec.get('proxima', '-')}"
-            )
 
             prox = "-"
             if self.get_prox_exec:
@@ -3329,13 +3201,6 @@ class JanelaServidor(QMainWindow):
 
         # PENDENTES (usar agendador)
         lista_pendentes = []
-        if self._status_execucao_hoje:
-            for nome, info in self._status_execucao_hoje.items():
-                faltantes = info.get("faltantes", 0)
-                proxima = info.get("proxima", "-")
-                if faltantes > 0:
-                    alvo = proxima if proxima and proxima != "-" else "--:--"
-                    lista_pendentes.append(f"{alvo} - {nome} ({faltantes}x)")
         if hasattr(self, "agendador") and self.agendador:
             snapshot = self.agendador.snapshot_agendamentos()
             agora = datetime.now(TZ)
@@ -3741,25 +3606,7 @@ def main():
         )
 
         def obter_mapeamento_ag():
-            mapeamento = obter_mapeamento_global()
-            filtrado = {}
-
-            for aba, itens in mapeamento.items():
-                for metodo, info in itens.items():
-                    registro = info.get("registro") or {}
-                    status = str(registro.get("status_automacao") or "").strip().upper()
-                    if status != "ATIVA":
-                        continue
-
-                    metodo_registro = NormalizadorDF.norm_key(registro.get("metodo_automacao"))
-                    metodo_fs = NormalizadorDF.norm_key(metodo)
-
-                    if not metodo_registro or metodo_registro != metodo_fs:
-                        continue
-
-                    filtrado.setdefault(aba, {})[metodo] = info
-
-            return filtrado
+            return obter_mapeamento_global()
 
         def obter_exec_df_ag():
             return sync_holder["df_exec"]
