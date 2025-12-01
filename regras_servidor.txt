@@ -1,0 +1,36 @@
+Visão geral: servidor roda em America/Sao_Paulo, organiza logs, planilhas e execuções de automações.
+
+Diretórios centrais
+- Base do servidor: DIR_SERVIDOR e logs diários em DIR_LOGS_BASE.
+- Solicitações das áreas: entrada em solicitacoes_das_areas, histórico em historico_solicitacoes.
+- Planilhas locais: download/armazenamento de automacoes_exec.xlsx e registro_automacoes.xlsx em "Downloads/automacoes_exec" e "Downloads/registro_automacoes".
+
+Sincronização de planilhas
+- SincronizadorPlanilhas roda em loop (intervalo padrão 600s), garantindo pastas, baixando dados do BigQuery quando online e salvando nos arquivos locais.
+- Sempre lê automacoes_exec.xlsx e registro_automacoes.xlsx com dtype texto, prepara dt_full em execuções e converte colunas para string antes de notificar callbacks.
+- Armazena timestamps de última e próxima sincronização e aciona callback para atualizar mapeamento/agendador e GUI.
+
+Mapeamento de métodos
+- DescobridorMetodos varre automações .py na pasta BASE_DIR.
+- Combina varredura com registro_automacoes.xlsx: normaliza metodo_automacao e o nome do arquivo (.stem) para decidir o emparelhamento.
+- A aba do mapa usa nome_automacao (ou ISOLADOS) e só considera status_automacao ATIVA como elegível para agendamento; entradas sem registro ou inativas ficam segregadas.
+- Para o agendador, o mapeamento é filtrado: requer status ATIVA e igualdade entre metodo_automacao (planilha) e nome do método após normalização.
+
+Regras de agendamento
+- AgendadorMetodos roda em threads de recalculo (cada 60s) e disparo (intervalo configurável, 20s na inicialização).
+- Status por método: SEM_REGISTRO (sem linha na planilha), INATIVO (status diferente de ATIVA), SEM_AGENDA (sem horários/dias válidos), SEM_PROXIMA (agenda vazia depois de calcular) ou AGENDADO (próxima data definida).
+- Próximas execuções usam horários e dia_semana normalizados; se não houver horários ou dia inválido, não agenda.
+- Rotina diária faz catch-up: consulta execuções anteriores (dt_full) e enfileira horários passados do dia atual ainda não executados para automações ATIVAS dentro dos horários/dias configurados.
+- Disparo normal enfileira métodos vencidos no dia corrente, recalcula próxima ocorrência e mantém agenda em timezone São Paulo.
+
+Solicitações das áreas
+- MonitorSolicitacoes varre solicitacoes_das_areas a cada 10s; ignora arquivos temporários (~ ou prefixo .), arquivos inacessíveis ou sem método.
+- Move toda solicitação processada para historico_solicitacoes com timestamp no nome.
+- Extrai método e login do nome do arquivo (se faltar domínio adiciona @c6bank.com), lê conteúdo como observação e valida permissão via callback.
+- Resolve método via mapeamento; se não encontrar envia e-mail de aviso (quando login disponível) e não enfileira.
+- Solicitações válidas geram contexto origem=solicitacao, justificativa "Solicitação da área" e são enfileiradas; dispara e-mail de início e, no fim da execução, envia e-mail de conclusão com status e anexos (arquivo de solicitação e log filho quando existirem).
+
+Execução das automações
+- ExecutorMetodos mantém fila com trava de concorrência configurável, cria logs filhos por método/data e roda subprocessos com variáveis de ambiente que indicam origem, observação e usuário.
+- Callbacks registram início/fim, atualizam GUI, e o fim converte rc em SUCESSO/SEM DADOS PARA PROCESSAR/FALHA.
+- Kill switch tenta encerrar processos (pai e filhos) com psutil, logando sucessos ou falhas.
