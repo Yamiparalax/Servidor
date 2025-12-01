@@ -1537,6 +1537,7 @@ class SincronizadorPlanilhas:
         self._pausado = False
         self._lock_execs = threading.Lock()
         self._executados_hoje = set()
+        self._executados_hoje_data = None
 
         DIR_XLSX_AUTEXEC.mkdir(parents=True, exist_ok=True)
         DIR_XLSX_REG.mkdir(parents=True, exist_ok=True)
@@ -1574,19 +1575,43 @@ class SincronizadorPlanilhas:
         return df2
 
     def _atualizar_executados_hoje(self, df_exec: pd.DataFrame):
+        hoje = datetime.now(TZ).date()
         metodos = set()
+        manter_cache = False
+        with self._lock_execs:
+            cache_data = self._executados_hoje_data
+            cache_atual = set(self._executados_hoje)
         try:
-            if df_exec is not None and not df_exec.empty and "dt_full" in df_exec.columns:
-                cols = {c.lower(): c for c in df_exec.columns}
-                c_met = cols.get("metodo_automacao")
-                if c_met:
-                    hoje = datetime.now(TZ).date()
-                    df_dia = df_exec[df_exec["dt_full"].dt.date == hoje]
-                    if not df_dia.empty:
-                        metodos = {
-                            NormalizadorDF.norm_key(v)
-                            for v in df_dia[c_met].dropna().astype(str)
-                        }
+            if df_exec is None or df_exec.empty or "dt_full" not in df_exec.columns:
+                if cache_data == hoje and cache_atual:
+                    manter_cache = True
+                else:
+                    with self._lock_execs:
+                        self._executados_hoje = set()
+                        self._executados_hoje_data = hoje
+                self.logger.warning(
+                    "sincronizador_sem_dados_execucoes_para_atualizar manter_cache=%s",
+                    manter_cache,
+                )
+                return
+
+            cols = {c.lower(): c for c in df_exec.columns}
+            c_met = cols.get("metodo_automacao")
+            if c_met:
+                df_dia = df_exec[df_exec["dt_full"].dt.date == hoje]
+                if not df_dia.empty:
+                    metodos = {
+                        NormalizadorDF.norm_key(v)
+                        for v in df_dia[c_met].dropna().astype(str)
+                    }
+                elif cache_data == hoje and cache_atual:
+                    manter_cache = True
+                if df_exec["dt_full"].isna().all():
+                    self.logger.warning(
+                        "sincronizador_execucoes_sem_dtfull linhas=%s manter_cache=%s",
+                        len(df_exec),
+                        manter_cache,
+                    )
         except Exception as e:
             self.logger.error(
                 "sincronizador_atualizar_executados_erro tipo=%s erro=%s",
@@ -1594,7 +1619,17 @@ class SincronizadorPlanilhas:
                 e,
             )
         with self._lock_execs:
-            self._executados_hoje = metodos
+            if manter_cache:
+                self.logger.info(
+                    "sincronizador_manter_cache_execucoes linhas=%s cache_tamanho=%s",
+                    len(df_exec) if df_exec is not None else 0,
+                    len(cache_atual),
+                )
+                self._executados_hoje = cache_atual
+                self._executados_hoje_data = cache_data
+            else:
+                self._executados_hoje = metodos
+                self._executados_hoje_data = hoje
 
     def ja_executou_hoje(self, metodo: str) -> bool:
         norm = NormalizadorDF.norm_key(metodo)
@@ -1616,12 +1651,25 @@ class SincronizadorPlanilhas:
             if not c_data:
                 return df2
 
-            d_str = df2[c_data].astype(str).str.strip()
-            if c_hora:
-                h_str = df2[c_hora].astype(str).str.strip()
-                combined = (d_str + " " + h_str).str.strip()
+            d_col = df2[c_data]
+            d_num = pd.to_numeric(d_col, errors="coerce")
+            d_dt = pd.to_datetime(d_num, unit="D", origin="1899-12-30", errors="coerce")
+            d_str = d_col.astype(str).str.strip()
+
+            h_col = df2[c_hora] if c_hora else None
+            h_num = pd.to_numeric(h_col, errors="coerce") if h_col is not None else None
+            h_td = pd.to_timedelta(h_num, unit="D", errors="coerce") if h_num is not None else None
+            h_str = h_col.astype(str).str.strip() if h_col is not None else None
+
+            if h_td is not None:
+                combined_dt = d_dt + h_td
             else:
-                combined = d_str
+                combined_dt = d_dt
+
+            if h_str is not None:
+                combined_str = (d_str + " " + h_str).str.strip()
+            else:
+                combined_str = d_str
 
             formatos = [
                 "%d/%m/%Y %H:%M:%S",
@@ -1632,13 +1680,14 @@ class SincronizadorPlanilhas:
                 "%Y-%m-%d",
             ]
 
-            dt = None
-            for fmt in formatos:
-                try:
-                    dt = pd.to_datetime(combined, format=fmt, errors="raise")
-                    break
-                except Exception:
-                    continue
+            dt = combined_dt
+            if dt is None or dt.isna().all():
+                for fmt in formatos:
+                    try:
+                        dt = pd.to_datetime(combined_str, format=fmt, errors="raise")
+                        break
+                    except Exception:
+                        continue
 
             if dt is None:
                 with warnings.catch_warnings():
@@ -1650,7 +1699,7 @@ class SincronizadorPlanilhas:
                         ),
                         category=UserWarning,
                     )
-                    dt = pd.to_datetime(combined, dayfirst=True, errors="coerce")
+                    dt = pd.to_datetime(combined_str, dayfirst=True, errors="coerce")
 
             df2["dt_full"] = dt
             try:
@@ -1710,16 +1759,13 @@ class SincronizadorPlanilhas:
         df_exec = pd.DataFrame()
         df_reg = pd.DataFrame()
 
-        # reset pastas XLSX
         for pasta in (DIR_XLSX_AUTEXEC, DIR_XLSX_REG):
             try:
-                if pasta.exists():
-                    shutil.rmtree(pasta)
                 pasta.mkdir(parents=True, exist_ok=True)
-                self.logger.info("sincronizador_reset_pasta_ok pasta=%s", str(pasta))
+                self.logger.info("sincronizador_pasta_ok pasta=%s", str(pasta))
             except Exception as e:
                 self.logger.error(
-                    "sincronizador_reset_pasta_erro pasta=%s tipo=%s erro=%s",
+                    "sincronizador_pasta_erro pasta=%s tipo=%s erro=%s",
                     str(pasta),
                     type(e).__name__,
                     e,
