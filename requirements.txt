@@ -1,0 +1,10 @@
+# Dependências do Servidor de Automações
+
+PySide6
+pandas
+google-cloud-bigquery
+psutil
+pywin32
+openpyxl
+db-dtypes
+requests

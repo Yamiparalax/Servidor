@@ -1,0 +1,1232 @@
+import getpass
+import traceback
+import psutil
+import pandas as pd
+from datetime import datetime
+from functools import partial
+
+from PySide6.QtCore import Qt, Signal, Slot, QTimer, QSize
+from PySide6.QtGui import QIcon, QAction, QTextCursor
+from PySide6.QtWidgets import (
+    QMainWindow,
+    QWidget,
+    QVBoxLayout,
+    QHBoxLayout,
+    QScrollArea,
+    QGridLayout,
+    QLabel,
+    QPushButton,
+    QFrame,
+    QMessageBox,
+    QListWidget,
+    QListWidgetItem,
+    QSplitter,
+    QProgressBar,
+    QSystemTrayIcon,
+    QMenu,
+    QLineEdit,
+    QStackedWidget,
+    QCheckBox,
+    QApplication,
+)
+
+from servidor.config import Config
+from servidor.core import NormalizadorDF
+from servidor.gui.styles import EstilosGUI
+from servidor.gui.components import (
+    CardNetflix,
+    DashboardBox,
+    LogDialog,
+    smart_update_listwidget,
+)
+from servidor.gui.widgets_extras import WeatherDialog, CurrencyDialog, CurrencyPage
+
+class JanelaServidor(QMainWindow):
+    sig_atualizar_dados = Signal(object, object)
+    sig_marcar_ocupado = Signal(str, bool)
+    sig_log = Signal(str)
+
+    def __init__(
+        self,
+        logger,
+        executor,
+        descobridor,
+        sincronizador,
+        monitor_recursos,
+        get_proxima_exec_str_callback=None,
+        get_status_agendamento_callback=None,
+        verificar_execucao_hoje=None,
+    ):
+        super().__init__()
+        self.logger = logger
+        self.executor = executor
+        self.descobridor = descobridor
+        self.sincronizador = sincronizador
+        self.monitor_recursos = monitor_recursos
+        self.get_prox_exec = get_proxima_exec_str_callback
+        self.get_status_agendamento = get_status_agendamento_callback
+        self.verificar_execucao_hoje = verificar_execucao_hoje
+
+        self.mapeamento = {}
+        self.df_exec = pd.DataFrame()
+        self.df_reg = pd.DataFrame()
+        self.cards = {}
+        self.infos = {}
+        self.dashboard_boxes = {}
+        self.agendador = None
+
+        self.log_painel = None
+        self.btn_parar_rodando = None
+        self.chk_auto_sync = None
+        self.input_busca = None
+        self.nav_list = None
+        self.stack = None
+        self.navegacao_indices = {}
+        self.card_secao = {}
+        self._busca_texto = ""
+        self._busca_ativa = False
+        self._tab_antes_busca = None
+
+        self.cpu_bar = None
+        self.ram_bar = None
+        self.swap_bar = None
+        self.lbl_temp = None
+        self._ultima_atualizacao_planilhas = None
+        self._proxima_atualizacao_planilhas = None
+        self.lista_recursos_metodos = None
+
+        self._resumo_sucesso = []
+        self._resumo_falhas = []
+        self._resumo_outros = []
+
+        self.tray_icon = None
+        self.setWindowTitle("SERVIDOR DE AUTOMAÇÕES - C6")
+        self.resize(1400, 900)
+        self.showMaximized()
+
+        self._ps_cache = {}
+        self._ps_cpu_init = set()
+
+        self._setup_ui()
+        self._setup_tray_icon()
+
+        self.sig_atualizar_dados.connect(self.atualizar_dados)
+        self.sig_marcar_ocupado.connect(self._slot_marcar_ocupado)
+        self.sig_log.connect(self._append_log)
+
+        try:
+            self.monitor_recursos.sinal_recursos.connect(self._on_recursos_atualizados)
+            self.monitor_recursos.sinal_msg.connect(self._append_log)
+        except Exception:
+            pass
+
+        try:
+            QTimer.singleShot(500, self._start_monitor_recursos)
+        except Exception:
+            pass
+
+        self.timer_gui = QTimer(self)
+        self.timer_gui.timeout.connect(self._tick_gui)
+        self.timer_gui.start(1000)
+
+    def _setup_tray_icon(self):
+        try:
+            if not QSystemTrayIcon.isSystemTrayAvailable():
+                return
+        except Exception:
+            return
+
+        try:
+            self.tray_icon = QSystemTrayIcon(self)
+            icon = self.windowIcon()
+            if hasattr(icon, "isNull") and icon.isNull():
+                icon = QIcon()
+            self.tray_icon.setIcon(icon)
+            self.tray_icon.setToolTip("Servidor Automacoes")
+
+            menu = QMenu()
+            act_show = QAction("Restaurar", self)
+            act_quit = QAction("Sair", self)
+            act_show.triggered.connect(self._from_tray_show)
+            act_quit.triggered.connect(self._sair_definitivo)
+            menu.addAction(act_show)
+            menu.addAction(act_quit)
+
+            self.tray_icon.setContextMenu(menu)
+            self.tray_icon.activated.connect(self._on_tray_activated)
+            self.tray_icon.show()
+        except Exception:
+            self.tray_icon = None
+
+    def _from_tray_show(self):
+        try:
+            self.showNormal()
+            self.raise_()
+            self.activateWindow()
+        except Exception:
+            pass
+
+    def _on_tray_activated(self, reason):
+        try:
+            if reason == QSystemTrayIcon.Trigger:
+                self._from_tray_show()
+        except Exception:
+            pass
+
+    def _sair_definitivo(self):
+        try:
+            if QMessageBox.question(self, "Sair", "Encerrar servidor?", QMessageBox.Yes | QMessageBox.No) == QMessageBox.Yes:
+                inst = QApplication.instance()
+                if inst:
+                    inst.quit()
+        except Exception:
+            inst = QApplication.instance()
+            if inst:
+                inst.quit()
+
+    def closeEvent(self, event):
+        try:
+            if self.tray_icon and self.tray_icon.isVisible():
+                event.ignore()
+                self.hide()
+                try:
+                    self.tray_icon.showMessage("Servidor", "Minimizado na bandeja.", QSystemTrayIcon.Information, 2000)
+                except Exception:
+                    pass
+                return
+        except Exception:
+            pass
+
+        try:
+            inst = QApplication.instance()
+            if inst:
+                inst.quit()
+        except Exception:
+            pass
+
+    def _start_monitor_recursos(self):
+        try:
+            if hasattr(self.monitor_recursos, "isRunning") and not self.monitor_recursos.isRunning():
+                self.monitor_recursos.start()
+        except Exception:
+            pass
+
+    def _setup_ui(self):
+        self.setStyleSheet(EstilosGUI.estilo_janela())
+        self.central_widget = QWidget()
+        self.setCentralWidget(self.central_widget)
+        self.main_layout = QVBoxLayout(self.central_widget)
+        self.main_layout.setContentsMargins(20, 20, 20, 20)
+        self.main_layout.setSpacing(8)
+
+        topo = self._criar_topo()
+        p_topo = EstilosGUI.obter_paleta()
+        topo_frame = QFrame()
+        topo_frame.setObjectName("topoFrame")
+        topo_frame.setStyleSheet(
+            f"QFrame#topoFrame {{ background: transparent; border-bottom: 1px solid {p_topo['borda_suave']}; }}"
+        )
+        topo_frame.setLayout(topo)
+
+        self.nav_list = QListWidget()
+        self.nav_list.setObjectName("listaNavegacao")
+        self.nav_list.setFixedWidth(220)
+        try:
+            self.nav_list.currentRowChanged.connect(self._on_secao_alterada)
+        except Exception:
+            pass
+
+        self.stack = QStackedWidget()
+        self.stack.setObjectName("pilhaSecoes")
+
+        splitter = QSplitter()
+        splitter.addWidget(self.nav_list)
+        splitter.addWidget(self.stack)
+        try:
+            splitter.setStretchFactor(1, 1)
+        except Exception:
+            pass
+
+        self.main_layout.addWidget(topo_frame)
+        self.main_layout.addWidget(splitter, stretch=1)
+
+    def _criar_topo(self):
+        p = EstilosGUI.obter_paleta()
+        topo = QHBoxLayout()
+        
+        # Status Label
+        self.lbl_status = QLabel("AGUARDANDO DADOS...")
+        self.lbl_status.setObjectName("statusLabel")
+        self.lbl_status.setStyleSheet(f"font-weight: 800; color: {p['aviso']};")
+        
+        # Resources (CPU, RAM, SWAP) moved to top
+        
+        def mk_mini_bar(lbl):
+            w = QWidget()
+            l = QHBoxLayout(w)
+            l.setContentsMargins(0,0,0,0)
+            l.setSpacing(5)
+            
+            lb = QLabel(lbl)
+            lb.setStyleSheet(f"color: {p['texto_sec']}; font-size: 10px; font-weight: 700;")
+            
+            b = QProgressBar()
+            b.setRange(0, 100)
+            b.setFixedSize(60, 8)
+            b.setTextVisible(False)
+            b.setStyleSheet(f"""
+                QProgressBar {{
+                    background-color: {p['bg_card']};
+                    border-radius: 4px;
+                }}
+                QProgressBar::chunk {{
+                    background-color: {p['destaque']};
+                    border-radius: 4px;
+                }}
+            """)
+            
+            l.addWidget(lb)
+            l.addWidget(b)
+            return w, b, lb
+
+        w_cpu, self.cpu_bar, self.cpu_lbl = mk_mini_bar("CPU")
+        w_ram, self.ram_bar, self.ram_lbl = mk_mini_bar("RAM")
+        w_swp, self.swap_bar, self.swap_lbl = mk_mini_bar("SWAP")
+
+        # Search Input
+        self.input_busca = self._criar_input_busca()
+
+        # Auto Sync Button
+        self.btn_auto_sync = QPushButton("AUTO SYNC: ON")
+        self.btn_auto_sync.setCheckable(True)
+        self.btn_auto_sync.setChecked(True)
+        self.btn_auto_sync.setStyleSheet(EstilosGUI.estilo_botao_toggle())
+        self.btn_auto_sync.setCursor(Qt.PointingHandCursor)
+        try:
+            self.btn_auto_sync.clicked.connect(self._on_toggle_auto_sync)
+        except Exception:
+            pass
+
+        # Refresh Button
+        self.btn_force = QPushButton("REFRESH")
+        self.btn_force.setStyleSheet(EstilosGUI.estilo_botao_topo())
+        try:
+            self.btn_force.clicked.connect(self._on_clique_refresh)
+        except Exception:
+            pass
+
+        # Weather/Currency buttons removed from top bar
+
+        # Layout Assembly
+        topo.addWidget(self.lbl_status)
+        topo.addSpacing(20)
+        topo.addWidget(w_cpu)
+        topo.addWidget(w_ram)
+        topo.addWidget(w_swp)
+        topo.addStretch(1)
+        topo.addWidget(self.input_busca)
+        topo.addSpacing(10)
+        topo.addWidget(self.btn_auto_sync)
+        topo.addSpacing(10)
+        topo.addWidget(self.btn_force)
+        
+        return topo
+
+    def _criar_input_busca(self):
+        p = EstilosGUI.obter_paleta()
+        barra = QLineEdit()
+        barra.setPlaceholderText("Buscar...")
+        try:
+            barra.setClearButtonEnabled(True)  # type: ignore[attr-defined]
+        except Exception:
+            pass
+        barra.setFixedWidth(280)
+        barra.setStyleSheet(
+            f"QLineEdit {{ background-color: {p['bg_card']}; border: 1px solid {p['borda_suave']}; border-radius: 12px; padding: 10px; color: {p['branco']}; }}"
+        )
+        try:
+            barra.textChanged.connect(self._on_busca_text_changed)
+        except Exception:
+            pass
+        return barra
+
+    def _on_secao_alterada(self, row):
+        try:
+            if self.stack:
+                self.stack.setCurrentIndex(row)
+        except Exception:
+            pass
+
+    def _ir_para_secao(self, secao):
+        alvo = str(secao or "").lower().strip()
+        if not alvo:
+            return
+        try:
+            for i in range(self.nav_list.count()):
+                it = self.nav_list.item(i)
+                if it and it.data(Qt.UserRole) == alvo:
+                    self.nav_list.setCurrentRow(i)
+                    return
+        except Exception:
+            pass
+
+    def _on_toggle_auto_sync(self):
+        chk = self.btn_auto_sync.isChecked()
+        try:
+            self.btn_auto_sync.setText("AUTO SYNC: ON" if chk else "AUTO SYNC: OFF")
+        except Exception:
+            pass
+        try:
+            self.sincronizador.pausar(not chk)
+        except Exception:
+            pass
+
+    def _on_clique_refresh(self):
+        msg = QMessageBox(self)
+        msg.setWindowTitle("ATUALIZAR")
+        msg.setText("DESEJA PROSSEGUIR EM FORÇAR A ATUALIZAR?")
+        msg.setStyleSheet(EstilosGUI.estilo_janela()) # Aplica estilo dark
+        
+        btn_sim = msg.addButton("SIM, PROSSEGUIR", QMessageBox.YesRole)
+        btn_nao = msg.addButton("NÃO, CANCELAR", QMessageBox.NoRole)
+        
+        msg.exec()
+        
+        if msg.clickedButton() == btn_sim:
+            self._iniciar_refresh_timer()
+            self._forcar_update()
+
+    def _iniciar_refresh_timer(self):
+        self.btn_force.setEnabled(False)
+        self.refresh_start_time = datetime.now()
+        if not hasattr(self, "timer_refresh_label"):
+            self.timer_refresh_label = QTimer(self)
+            self.timer_refresh_label.timeout.connect(self._update_refresh_label)
+        self.timer_refresh_label.start(1000)
+        self._update_refresh_label()
+
+    def _update_refresh_label(self):
+        if not hasattr(self, "refresh_start_time"):
+            return
+        delta = datetime.now() - self.refresh_start_time
+        s = int(delta.total_seconds())
+        h = s // 3600
+        m = (s % 3600) // 60
+        sec = s % 60
+        self.btn_force.setText(f"{h:02d}:{m:02d}:{sec:02d}")
+
+    def _parar_refresh_timer(self):
+        if hasattr(self, "timer_refresh_label") and self.timer_refresh_label.isActive():
+            self.timer_refresh_label.stop()
+        self.btn_force.setText("REFRESH")
+        self.btn_force.setEnabled(True)
+
+    def _forcar_update(self):
+        try:
+            self.lbl_status.setText("Atualizando...")
+        except Exception:
+            pass
+        try:
+            self.sincronizador.forcar_atualizacao()
+        except Exception:
+            pass
+
+    @Slot(float, float, float, int)
+    def _on_recursos_atualizados(self, c, r, s, t):
+        p = EstilosGUI.obter_paleta()
+        
+        def update_bar(bar, lbl, val, nome):
+            try:
+                bar.setValue(int(val))
+                lbl.setText(f"{nome} {int(val)}%")
+                
+                cor = p['verde']
+                if val >= 80:
+                    cor = p['aviso'] # Vermelho
+                elif val >= 50:
+                    cor = p['amarelo']
+                
+                bar.setStyleSheet(f"""
+                    QProgressBar {{
+                        background-color: #333333;
+                        border-radius: 4px;
+                    }}
+                    QProgressBar::chunk {{
+                        background-color: {cor};
+                        border-radius: 4px;
+                    }}
+                """)
+            except Exception:
+                pass
+
+        try:
+            if self.cpu_bar and self.cpu_lbl:
+                update_bar(self.cpu_bar, self.cpu_lbl, c, "CPU")
+            if self.ram_bar and self.ram_lbl:
+                update_bar(self.ram_bar, self.ram_lbl, r, "RAM")
+            if self.swap_bar and self.swap_lbl:
+                update_bar(self.swap_bar, self.swap_lbl, s, "SWAP")
+        except Exception:
+            pass
+
+    @Slot(object, object)
+    def atualizar_dados(self, df_exec, df_reg):
+        self._parar_refresh_timer()
+        self.df_exec = df_exec.copy() if df_exec is not None else pd.DataFrame()
+        self.df_reg = df_reg.copy() if df_reg is not None else pd.DataFrame()
+
+        try:
+            self._ultima_atualizacao_planilhas = getattr(self.sincronizador, "ultima_execucao", None)
+            self._proxima_atualizacao_planilhas = getattr(self.sincronizador, "proxima_execucao", None)
+        except Exception:
+            pass
+
+        novo = self.descobridor.mapear_por_registro(self.df_reg)
+        mudou = set(novo.keys()) != set(self.mapeamento.keys())
+        vazio = (self.stack.count() == 0) if self.stack else True
+        self.mapeamento = novo
+
+        self._recalcular_resumos_execucao()
+
+        if mudou or vazio:
+            try:
+                QTimer.singleShot(0, self._reconstruir_abas)
+            except Exception:
+                self._reconstruir_abas()
+        else:
+            try:
+                QTimer.singleShot(0, self._preencher_cards)
+                QTimer.singleShot(0, self._atualizar_monitor)
+            except Exception:
+                self._preencher_cards()
+                self._atualizar_monitor()
+
+        u = self._ultima_atualizacao_planilhas
+        p = self._proxima_atualizacao_planilhas
+        if u or p:
+            self.atualizar_status_planilhas(u, p)
+
+        self._aplicar_busca_cards()
+
+    def atualizar_mapeamento_threadsafe(self, e, r):
+        try:
+            self.sig_atualizar_dados.emit(e, r)
+        except Exception:
+            self.atualizar_dados(e, r)
+
+    def _recalcular_resumos_execucao(self):
+        self._resumo_sucesso = []
+        self._resumo_falhas = []
+        self._resumo_outros = []
+
+        if self.df_exec.empty or "dt_full" not in self.df_exec.columns:
+            self.logger.warning("GUI: DataFrame EXEC vazio ou sem dt_full.")
+            return
+
+        try:
+            self.df_exec["dt_full"] = pd.to_datetime(self.df_exec["dt_full"], errors="coerce")
+        except Exception:
+            pass
+
+        cols = {c.lower(): c for c in self.df_exec.columns}
+        c_met = cols.get("metodo_automacao")
+        c_stat = cols.get("status") or cols.get("status_exec") or cols.get("status_execucao")
+
+        if not c_met or not c_stat:
+            self.logger.warning("GUI: Colunas não encontradas. Disp: %s", list(cols.keys()))
+            return
+
+        hoje = datetime.now(Config.TZ).date()
+
+        try:
+            dt_series = self.df_exec["dt_full"]
+            dates = dt_series.dt.date
+            count_hoje = int((dates == hoje).sum())
+
+            top = dates.value_counts(dropna=True).head(12)
+            top_fmt = {str(k): int(v) for k, v in top.items()}
+
+            self.logger.info(
+                "GUI_DT_FULL_DIAG: dtype=%s min=%s max=%s hoje=%s count_hoje=%s top_dates=%s",
+                str(dt_series.dtype),
+                str(dt_series.min()),
+                str(dt_series.max()),
+                str(hoje),
+                count_hoje,
+                top_fmt,
+            )
+
+            df_hj = self.df_exec[dates == hoje].copy()
+            if df_hj.empty:
+                self.logger.warning(
+                    "GUI: Nenhum registro encontrado para %s. amostra_dt_full=%s",
+                    str(hoje),
+                    dt_series.head(12).astype(str).tolist(),
+                )
+                return
+
+            df_hj = df_hj.sort_values("dt_full", ascending=False)
+
+            for _, r in df_hj.iterrows():
+                m = str(r.get(c_met, ""))
+                s = str(r.get(c_stat, "")).strip().upper()
+                h = r["dt_full"].strftime("%H:%M") if pd.notna(r.get("dt_full")) else "-"
+                txt = f"{h} - {m}"
+                if s == "SUCESSO":
+                    self._resumo_sucesso.append(txt)
+                elif s in ["FALHA", "ERRO"]:
+                    self._resumo_falhas.append(txt + f" ({s})")
+                else:
+                    self._resumo_outros.append(txt + f" ({s})")
+
+        except Exception as e:
+            self.logger.error("GUI_recalc_erro: %s\n%s", e, traceback.format_exc())
+
+    def _reconstruir_abas(self):
+        self.navegacao_indices = {}
+        self.card_secao = {}
+        self.cards.clear()
+        self.infos.clear()
+        self.dashboard_boxes.clear()
+
+        try:
+            self.nav_list.clear()
+        except Exception:
+            pass
+
+        try:
+            while self.stack.count():
+                w = self.stack.widget(0)
+                self.stack.removeWidget(w)
+                try:
+                    w.deleteLater()
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        p = EstilosGUI.obter_paleta()
+
+        # MONITOR
+        pm = QWidget()
+        lm = QVBoxLayout(pm)
+        sm = QScrollArea()
+        sm.setWidgetResizable(True)
+        cm = QWidget()
+        gm = QGridLayout(cm)
+        gm.setSpacing(20)
+        gm.setContentsMargins(30, 30, 30, 30)
+
+        self.dashboard_boxes["pendentes"] = DashboardBox("A RODAR HOJE", p["amarelo"])
+        self.dashboard_boxes["rodando"] = DashboardBox("RODANDO AGORA", p["azul"])
+        self.dashboard_boxes["sucesso"] = DashboardBox("SUCESSO HOJE", p["sucesso"])
+        self.dashboard_boxes["falhas"] = DashboardBox("FALHAS / ATENÇÃO HOJE", p["destaque"])
+        self.dashboard_boxes["outros"] = DashboardBox("OUTROS STATUS HOJE", p["texto_sec"])
+
+        gm.addWidget(self.dashboard_boxes["pendentes"], 0, 0)
+        gm.addWidget(self.dashboard_boxes["rodando"], 0, 1)
+        gm.addWidget(self.dashboard_boxes["sucesso"], 1, 0)
+        gm.addWidget(self.dashboard_boxes["falhas"], 1, 1)
+        gm.addWidget(self.dashboard_boxes["outros"], 2, 0, 1, 2)
+
+        sm.setWidget(cm)
+        lm.addWidget(sm)
+
+        item = QListWidgetItem("MONITOR")
+        item.setData(Qt.UserRole, "monitor")
+        item.setSizeHint(QSize(200, 44))
+        self.nav_list.addItem(item)
+        self.stack.addWidget(pm)
+
+        # RECURSOS
+        tr = QWidget()
+        lr = QVBoxLayout(tr)
+        lr.addWidget(QLabel("Consumo por processo"))
+        self.lista_recursos_metodos = QListWidget()
+        lr.addWidget(self.lista_recursos_metodos)
+
+        item = QListWidgetItem("RECURSOS")
+        item.setData(Qt.UserRole, "recursos")
+        item.setSizeHint(QSize(200, 44))
+        self.nav_list.addItem(item)
+        self.stack.addWidget(tr)
+
+        # ABAS POR GRUPO (AGORA EM LINHAS HORIZONTAIS)
+        # Vamos criar uma única página "HOME" que contém todas as categorias em linhas
+        home_widget = QWidget()
+        home_layout = QVBoxLayout(home_widget)
+        home_layout.setSpacing(30)
+        home_layout.setContentsMargins(20, 0, 20, 20)
+        home_layout.setContentsMargins(20, 0, 20, 20)
+        
+        scroll_home = QScrollArea()
+        scroll_home.setWidgetResizable(True)
+        scroll_home.setWidget(home_widget)
+        
+        # 1. INICIO
+        item = QListWidgetItem("INICIO")
+        item.setData(Qt.UserRole, "inicio")
+        item.setSizeHint(QSize(200, 50))
+        self.nav_list.addItem(item)
+        self.stack.addWidget(scroll_home)
+
+        # 2. CURRENCY (NOVA ABA)
+        item_cur = QListWidgetItem("CURRENCY")
+        item_cur.setData(Qt.UserRole, "currency")
+        item_cur.setSizeHint(QSize(200, 50))
+        self.nav_list.addItem(item_cur)
+        
+        page_currency = CurrencyPage()
+        self.stack.addWidget(page_currency)
+
+        # SEÇÃO UTILITÁRIOS (WIDGETS)
+        lbl_util = QLabel("UTILITÁRIOS")
+        lbl_util.setStyleSheet("font-size: 18px; font-weight: 900; margin-bottom: 10px; color: #E5E5E5;")
+        home_layout.addWidget(lbl_util)
+
+        scroll_util = QScrollArea()
+        scroll_util.setFixedHeight(200)
+        scroll_util.setWidgetResizable(True)
+        scroll_util.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll_util.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+
+        content_util = QWidget()
+        layout_util = QHBoxLayout(content_util)
+        layout_util.setSpacing(15)
+        layout_util.setContentsMargins(0, 0, 0, 0)
+        layout_util.setAlignment(Qt.AlignLeft)
+
+        # Card Clima
+        card_clima = CardNetflix("CLIMA SP")
+        card_clima.definir_status_visual("WIDGET")
+        card_clima.btn_executar.setText("ABRIR")
+        card_clima.btn_executar.clicked.connect(self._abrir_clima)
+        card_clima.btn_log.setVisible(False)
+        card_clima.btn_parar.setVisible(False)
+        card_clima.lbl_ultima.setText("Previsão do Tempo")
+        card_clima.lbl_proxima.setText("São Paulo - SP")
+        layout_util.addWidget(card_clima)
+
+        # Card Mercado REMOVIDO pois virou aba propria
+
+        scroll_util.setWidget(content_util)
+        home_layout.addWidget(scroll_util)
+
+        for aba, itens in self.mapeamento.items():
+            if not itens:
+                continue
+            
+            # Titulo da Categoria
+            lbl_cat = QLabel(str(aba).upper())
+            lbl_cat.setStyleSheet("font-size: 18px; font-weight: 900; margin-bottom: 10px; color: #E5E5E5;")
+            home_layout.addWidget(lbl_cat)
+            
+            # Area de Scroll Horizontal
+            scroll_row = QScrollArea()
+            scroll_row.setFixedHeight(200) # Altura fixa para a linha
+            scroll_row.setWidgetResizable(True)
+            scroll_row.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+            scroll_row.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+            
+            content_row = QWidget()
+            layout_row = QHBoxLayout(content_row)
+            layout_row.setSpacing(15)
+            layout_row.setContentsMargins(0, 0, 0, 0)
+            layout_row.setAlignment(Qt.AlignLeft)
+            
+            for met in sorted(itens.keys()):
+                info = itens[met].get("registro") or {}
+                self.infos[met] = info
+                
+                card = CardNetflix(met)
+                try:
+                    card.btn_executar.clicked.connect(partial(self._acao_executar, met))
+                    card.sig_parar_solicitado.connect(self._acao_parar_duplo_clique)
+                    card.btn_parar.clicked.connect(partial(self._acao_parar, met))
+                    card.btn_log.clicked.connect(partial(self._acao_ver_log, met))
+                except Exception:
+                    pass
+                    
+                self.cards[met] = card
+                self.card_secao[met] = "inicio" # Agora tudo fica na home
+                layout_row.addWidget(card)
+            
+            scroll_row.setWidget(content_row)
+            home_layout.addWidget(scroll_row)
+
+        home_layout.addStretch(1)
+        
+        self._preencher_cards()
+        self._atualizar_monitor()
+        self._atualizar_tab_recursos()
+        self._aplicar_busca_cards()
+
+        try:
+            self.nav_list.setCurrentRow(2) # Seleciona INICIO (0=Monitor, 1=Recursos, 2=Inicio)
+        except Exception:
+            pass
+
+    def _preencher_cards(self):
+        execs_snapshot = {}
+        try:
+            execs_snapshot = self.executor.snapshot_execucao()
+        except Exception:
+            execs_snapshot = {}
+
+        grp = None
+
+        agora_naive = datetime.now(Config.TZ).replace(tzinfo=None)
+        agora_ts = pd.Timestamp(agora_naive)
+
+        if not self.df_exec.empty and "dt_full" in self.df_exec.columns:
+            try:
+                cols = {c.lower(): c for c in self.df_exec.columns}
+                c_met = cols.get("metodo_automacao")
+                if c_met:
+                    df = self.df_exec.copy()
+                    df["dt_full"] = pd.to_datetime(df["dt_full"], errors="coerce")
+                    df["_norm"] = df[c_met].apply(NormalizadorDF.norm_key)
+                    df = df.sort_values("dt_full", ascending=False)
+                    grp = df.groupby("_norm")
+            except Exception as e:
+                self.logger.error("GUI_preencher_cards_grp_erro tipo=%s erro=%s", type(e).__name__, e)
+
+        cols_exec = {c.lower(): c for c in self.df_exec.columns} if not self.df_exec.empty else {}
+        c_st = cols_exec.get("status") or cols_exec.get("status_exec") or cols_exec.get("status_execucao")
+
+        for met, card in self.cards.items():
+            norm = NormalizadorDF.norm_key(met)
+            inf = self.infos.get(met, {})
+
+            prox = self.get_prox_exec(met) if self.get_prox_exec else "-"
+            try:
+                card.lbl_proxima.setText(f"PROXIMA EXECUÇÃO: {prox}")
+            except Exception:
+                pass
+
+            st_txt = "-"
+            st_ag = self.get_status_agendamento(met) if self.get_status_agendamento else ""
+            if st_ag == "AGENDADO":
+                st_txt = "AGENDADO"
+
+            ultima_ok = False
+
+            if grp is not None and norm in getattr(grp, "groups", {}):
+                try:
+                    grupo = grp.get_group(norm).copy()
+                    grupo["dt_full"] = pd.to_datetime(grupo["dt_full"], errors="coerce")
+
+                    mask_fut = grupo["dt_full"].notna() & (grupo["dt_full"] > agora_ts)
+                    if mask_fut.any():
+                        try:
+                            self.logger.warning(
+                                "GUI_ULTIMA_FUTURA metodo=%s total_futuras=%s exemplo=%s",
+                                met,
+                                int(mask_fut.sum()),
+                                str(grupo.loc[mask_fut, "dt_full"].iloc[0]),
+                            )
+                        except Exception:
+                            pass
+
+                    grupo_valid = grupo[grupo["dt_full"].notna() & (grupo["dt_full"] <= agora_ts)]
+                    if not grupo_valid.empty:
+                        ult = grupo_valid.sort_values("dt_full", ascending=False).iloc[0]
+                        try:
+                            card.lbl_ultima.setText(f"ULTIMA EXECUÇÃO: {ult['dt_full'].strftime('%d/%m %H:%M')}")
+                        except Exception:
+                            pass
+                        if c_st:
+                            st_txt = str(ult.get(c_st, "")).strip().upper() or st_txt
+                        ultima_ok = True
+                except Exception as e:
+                    self.logger.error(
+                        "GUI_preencher_cards_last_erro metodo=%s tipo=%s erro=%s",
+                        met,
+                        type(e).__name__,
+                        e,
+                    )
+
+            if not ultima_ok:
+                try:
+                    card.lbl_ultima.setText("ULTIMA EXECUÇÃO: -")
+                except Exception:
+                    pass
+
+            if met in execs_snapshot:
+                try:
+                    card.definir_status_visual("RODANDO")
+                except Exception:
+                    pass
+                try:
+                    ini = execs_snapshot[met]["inicio"]
+                    s = int((datetime.now(Config.TZ) - ini).total_seconds())
+                    card.lbl_status_badge.setText(f"RODANDO {s//60:02d}:{s%60:02d}")
+                except Exception:
+                    pass
+            else:
+                try:
+                    card.definir_status_visual(st_txt if st_txt != "-" else "AGUARDANDO")
+                except Exception:
+                    pass
+
+            is_run = met in execs_snapshot
+            try:
+                card.btn_executar.setEnabled(not is_run)
+                card.btn_executar.setText("RODANDO..." if is_run else "PLAY")
+                card.btn_parar.setVisible(False)
+            except Exception:
+                pass
+
+    def _atualizar_monitor(self):
+        try:
+            execs = self.executor.snapshot_execucao()
+        except Exception:
+            execs = {}
+
+        l_run = []
+        for m, i in execs.items():
+            try:
+                dur = str(datetime.now(Config.TZ) - i["inicio"]).split(".")[0]
+            except Exception:
+                dur = "-"
+            l_run.append(f"{m} ({dur})")
+
+        try:
+            self.dashboard_boxes["rodando"].atualizar_lista(l_run if l_run else ["Nada rodando."])
+        except Exception:
+            pass
+
+        l_pend = []
+        try:
+            if self.agendador:
+                snap = self.agendador.snapshot_agendamentos()
+                now = datetime.now(Config.TZ)
+                for m, dt in snap.items():
+                    if dt and dt.date() == now.date() and dt > now:
+                        l_pend.append(f"{dt.strftime('%H:%M')} - {m}")
+        except Exception:
+            pass
+
+        try:
+            self.dashboard_boxes["pendentes"].atualizar_lista(sorted(l_pend) if l_pend else ["Nada pendente."])
+            self.dashboard_boxes["sucesso"].atualizar_lista(self._resumo_sucesso or ["-"])
+            self.dashboard_boxes["falhas"].atualizar_lista(self._resumo_falhas or ["-"])
+            self.dashboard_boxes["outros"].atualizar_lista(self._resumo_outros or ["-"])
+        except Exception:
+            pass
+
+    def _acao_executar(self, metodo):
+            path = None
+            try:
+                if "ISOLADOS" in self.mapeamento and metodo in self.mapeamento["ISOLADOS"]:
+                    path = self.mapeamento["ISOLADOS"][metodo]["path"]
+                else:
+                    for _, its in self.mapeamento.items():
+                        if metodo in its:
+                            path = its[metodo]["path"]
+                            break
+            except Exception:
+                path = None
+
+            try:
+                if self.verificar_execucao_hoje and self.verificar_execucao_hoje(metodo):
+                    self.logger.info("Manual: %s já rodou hoje, mas execução forçada pelo usuário.", metodo)
+            except Exception:
+                pass
+
+            if not path:
+                self._append_log(f"Não achei path do método: {metodo}")
+                return
+
+            try:
+                ok = self.executor.enfileirar(metodo, path, {"origem": "manual", "usuario": getpass.getuser()})
+                if ok and metodo in self.cards:
+                    self.cards[metodo].btn_executar.setText("INICIANDO...")
+                    self.cards[metodo].btn_executar.setEnabled(False)
+            except Exception as e:
+                self._append_log(f"Falha ao enfileirar {metodo}: {e}")
+
+    def _acao_parar(self, met):
+        try:
+            if QMessageBox.question(self, "Parar", f"Parar {met}?", QMessageBox.Yes | QMessageBox.No) == QMessageBox.Yes:
+                self.executor.parar_processo(met)
+        except Exception:
+            try:
+                self.executor.parar_processo(met)
+            except Exception:
+                pass
+
+    def _acao_parar_duplo_clique(self, met):
+        try:
+            execs = self.executor.snapshot_execucao()
+            if met not in execs:
+                return
+        except Exception:
+            return
+
+        try:
+            msg = QMessageBox(self)
+            msg.setWindowTitle("PARAR EXECUÇÃO")
+            msg.setText(f"DESEJA ENCERRAR EXECUÇÃO DO METODO {met}?")
+            msg.setStyleSheet(EstilosGUI.estilo_janela())
+            
+            btn_sim = msg.addButton("SIM, PROSSEGUIR", QMessageBox.YesRole)
+            btn_nao = msg.addButton("NÃO, CANCELAR", QMessageBox.NoRole)
+            
+            msg.exec()
+            
+            if msg.clickedButton() == btn_sim:
+                self.executor.parar_processo(met)
+        except Exception:
+            try:
+                self.executor.parar_processo(met)
+            except Exception:
+                pass
+
+    def _achar_ultimo_log_metodo(self, met):
+        try:
+            base = Config.DIR_LOGS_BASE / str(met).lower()
+            if not base.exists():
+                return None
+            arquivos = [p for p in base.rglob("*.log") if p.is_file()]
+            if not arquivos:
+                return None
+            return max(arquivos, key=lambda p: p.stat().st_mtime)
+        except Exception:
+            return None
+
+    def _acao_ver_log(self, met):
+        try:
+            arq = self._achar_ultimo_log_metodo(met)
+            if not arq:
+                try:
+                    QMessageBox.information(self, "Log", f"Nenhum log encontrado para {met}.")
+                except Exception:
+                    pass
+                return
+
+            try:
+                conteudo = arq.read_text(encoding="utf-8", errors="replace")
+            except Exception:
+                conteudo = ""
+
+            dlg = LogDialog(met, conteudo, parent=self)
+            try:
+                dlg.exec()
+            except Exception:
+                pass
+        except Exception as e:
+            try:
+                QMessageBox.information(self, "Log", f"Erro ao abrir log de {met}: {e}")
+            except Exception:
+                pass
+
+    def _on_busca_text_changed(self, t):
+        texto = (t or "").strip().lower()
+
+        # Logica de troca de aba
+        if texto and not self._busca_ativa:
+            # Começou a digitar: salva onde estava e vai pro inicio (onde tem cards)
+            self._tab_antes_busca = self.stack.currentIndex()
+            self._busca_ativa = True
+            self._ir_para_secao("inicio")
+        elif not texto and self._busca_ativa:
+            # Limpou: volta pra onde estava
+            self._busca_ativa = False
+            if self._tab_antes_busca is not None:
+                self.stack.setCurrentIndex(self._tab_antes_busca)
+            self._tab_antes_busca = None
+
+        self._busca_texto = texto
+        self._aplicar_busca_cards()
+
+    def _aplicar_busca_cards(self):
+        q = (self._busca_texto or "").strip().lower()
+        if not self.cards:
+            return
+
+        for met, card in self.cards.items():
+            try:
+                if not q:
+                    card.setVisible(True)
+                    continue
+                alvo = str(met).lower()
+                info = self.infos.get(met, {}) or {}
+                area = str(info.get("area_solicitante", "")).lower()
+                nome = str(info.get("nome_automacao", "")).lower()
+                ok = (q in alvo) or (q in area) or (q in nome)
+                card.setVisible(bool(ok))
+            except Exception:
+                try:
+                    card.setVisible(True)
+                except Exception:
+                    pass
+
+    def _tick_gui(self):
+        try:
+            self._preencher_cards()
+        except Exception:
+            pass
+        try:
+            self._atualizar_monitor()
+        except Exception:
+            pass
+        try:
+            self._atualizar_tab_recursos()
+        except Exception:
+            pass
+        try:
+            u = getattr(self.sincronizador, "ultima_execucao", None)
+            p = getattr(self.sincronizador, "proxima_execucao", None)
+            if u or p:
+                self.atualizar_status_planilhas(u, p)
+        except Exception:
+            pass
+
+    def _atualizar_tab_recursos(self):
+        if not self.lista_recursos_metodos:
+            return
+
+        try:
+            execs = self.executor.snapshot_execucao()
+        except Exception:
+            execs = {}
+
+        linhas = []
+        agora = datetime.now(Config.TZ)
+
+        for met, info in execs.items():
+            pid = (info or {}).get("pid")
+            ini = (info or {}).get("inicio")
+            dur = "-"
+            try:
+                if ini:
+                    dur = str(agora - ini).split(".")[0]
+            except Exception:
+                pass
+
+            cpu = "-"
+            mem = "-"
+
+            if pid:
+                try:
+                    p = self._ps_cache.get(pid)
+                    if p is None or not p.is_running():
+                        p = psutil.Process(pid)
+                        self._ps_cache[pid] = p
+                        try:
+                            p.cpu_percent(None)
+                            self._ps_cpu_init.add(pid)
+                        except Exception:
+                            pass
+
+                    try:
+                        cpu_val = p.cpu_percent(None)
+                        cpu = f"{cpu_val:.1f}%"
+                    except Exception:
+                        cpu = "-"
+
+                    try:
+                        mem_mb = p.memory_info().rss / (1024 * 1024)
+                        mem = f"{mem_mb:.0f}MB"
+                    except Exception:
+                        mem = "-"
+
+                except Exception:
+                    cpu = "-"
+                    mem = "-"
+
+            linhas.append(f"{met} | pid={pid or '-'} | cpu={cpu} | mem={mem} | dur={dur}")
+
+        try:
+            smart_update_listwidget(self.lista_recursos_metodos, linhas if linhas else ["Nenhum processo em execução."])
+        except Exception:
+            try:
+                self.lista_recursos_metodos.clear()
+                for x in (linhas if linhas else ["Nenhum processo em execução."]):
+                    self.lista_recursos_metodos.addItem(x)
+            except Exception:
+                pass
+
+    def atualizar_status_planilhas(self, u, p):
+        try:
+            txt = []
+            if u:
+                txt.append(f"ÚLTIMA ATUALIZAÇÃO: {u.strftime('%H:%M')}")
+            if p:
+                txt.append(f"PRÓXIMA ATUALIZAÇÃO: {p.strftime('%H:%M')}")
+            self.lbl_status.setText("   |   ".join(txt) if txt else "AGUARDANDO DADOS...")
+        except Exception:
+            pass
+
+    def marcar_metodo_ocupado(self, met, ocupado: bool):
+        try:
+            self.sig_marcar_ocupado.emit(met, bool(ocupado))
+        except Exception:
+            self._slot_marcar_ocupado(met, bool(ocupado))
+
+    @Slot(str, bool)
+    def _slot_marcar_ocupado(self, met, ocupado):
+        try:
+            card = self.cards.get(met)
+            if not card:
+                return
+
+            if ocupado:
+                try:
+                    card.btn_executar.setEnabled(False)
+                    card.btn_executar.setText("RODANDO...")
+                    card.definir_status_visual("RODANDO")
+                except Exception:
+                    pass
+            else:
+                try:
+                    card.btn_executar.setEnabled(True)
+                    card.btn_executar.setText("EXECUTAR")
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    @Slot(str)
+    def _append_log(self, msg):
+        try:
+            if not self.log_painel:
+                return
+
+            self.log_painel.append(str(msg))
+            try:
+                cur = self.log_painel.textCursor()
+                cur.movePosition(QTextCursor.End)
+                self.log_painel.setTextCursor(cur)
+            except Exception:
+                pass
+
+            # poda o log do painel (evita exploding)
+            try:
+                if self.log_painel.document().blockCount() > 2000:
+                    doc = self.log_painel.document()
+                    cur = QTextCursor(doc)
+                    cur.movePosition(QTextCursor.Start)
+                    for _ in range(200):
+                        cur.select(QTextCursor.LineUnderCursor)
+                        cur.removeSelectedText()
+                        cur.deleteChar()
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+    def _abrir_clima(self):
+        try:
+            dlg = WeatherDialog(self)
+            dlg.exec()
+        except Exception:
+            pass
+
+    def _abrir_financeiro(self):
+        try:
+            dlg = CurrencyDialog(self)
+            dlg.exec()
+        except Exception:
+            pass
