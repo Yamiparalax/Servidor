@@ -70,25 +70,28 @@ class EstilosGUI:
                 border: none;
                 border-right: 1px solid {p['borda_suave']};
                 outline: none;
-                padding-top: 20px;
+                padding-top: 30px;
             }}
             QListWidget#listaNavegacao::item {{
-                height: 55px;
-                padding-left: 20px;
+                height: 60px;
+                padding-left: 25px;
                 color: {p['texto_sec']};
-                border-left: 4px solid transparent;
-                margin-bottom: 8px;
-                font-weight: 700;
-                font-size: 14px;
+                border-left: 3px solid transparent;
+                margin-bottom: 4px;
+                font-weight: 600;
+                font-size: 13px;
+                /* Transition effort via style sheet is limited in Qt, but we can tune colors */
             }}
             QListWidget#listaNavegacao::item:hover {{
                 background-color: {p['bg_card_hover']};
                 color: {p['branco']};
+                border-left: 3px solid {p['texto_sec']};
             }}
             QListWidget#listaNavegacao::item:selected {{
-                background-color: rgba(108, 93, 211, 0.15); /* Purple tint */
+                background-color: rgba(108, 93, 211, 0.10); /* Subtle Purple Tint */
                 color: {p['branco']};
                 border-left: 3px solid {p['destaque']};
+                font-weight: 800;
             }}
         """
 
@@ -98,38 +101,41 @@ class EstilosGUI:
         return f"""
             QFrame#cardNetflix {{
                 background-color: {p['bg_card']};
-                border-radius: 16px;
+                border-radius: 12px;
                 border: 1px solid {p['borda_suave']};
             }}
             QFrame#cardNetflix:hover {{
                 background-color: {p['bg_card_hover']};
-                border: 1px solid {p['destaque']};
+                border: 1px solid {p['destaque']}; 
+                /* Simulation of a glow could be done with more complex border logic if needed */
             }}
             QLabel#tituloCard {{
                 color: {p['branco']};
-                font-size: 16px;
+                font-size: 15px;
                 font-weight: 800;
                 background-color: transparent;
+                letter-spacing: 0.5px;
             }}
             QLabel#subtituloCard {{
                 color: {p['texto_sec']};
                 font-size: 11px;
-                font-weight: 600;
+                font-weight: 500;
                 background-color: transparent;
             }}
             QLabel#statusBadge {{
                 font-size: 10px;
-                font-weight: 900;
-                padding: 4px;
-                border-radius: 6px;
+                font-weight: 800;
+                padding: 4px 8px;
+                border-radius: 4px;
             }}
             QPushButton {{
                 background-color: {p['destaque']};
                 color: {p['branco']};
                 border: none;
-                border-radius: 8px;
+                border-radius: 6px;
                 font-weight: 700;
-                font-size: 12px;
+                font-size: 11px;
+                text-transform: uppercase;
             }}
             QPushButton:hover {{
                 background-color: {p['destaque_hover']};

@@ -1,8 +1,8 @@
-# Dependências do Servidor de Automações
-
+# Server Dependencies
 PySide6
 pandas
 google-cloud-bigquery
+google-auth
 psutil
 pywin32
 openpyxl

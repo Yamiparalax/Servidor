@@ -1,20 +1,40 @@
-# Instruções de Instalação
+# Servidor de Automações - Célula Python
 
-Para instalar as dependências necessárias para rodar o servidor, execute o seguinte comando no terminal (PowerShell ou CMD), dentro da pasta do projeto:
+**Banco C6 S.A. | Mensageria e Cargas Operacionais**  
+*Monitoração e Sustentação de Robôs*
 
-```powershell
-pip install -r requirements.txt
-```
+---
 
-Certifique-se de que você está usando o ambiente Python correto (o mesmo que será usado para rodar o servidor).
+## Sobre o Projeto
+Este servidor atua como um orquestrador central para os scripts de automação Python da mensageria. Ele gerencia o agendamento, execução segura (processos isolados), monitoramento de recursos e logs centralizados das automações.
 
-## Como Rodar o Servidor
+## Pré-requisitos
+*   **SO**: Windows 10/11 ou Windows Server.
+*   **Python**: 3.10 ou superior.
+*   **Rede**: Acesso às pastas de rede da Célula Python e, se aplicável, acesso liberado ao BigQuery (dataset `ADMINISTRACAO_CELULA_PYTHON`).
+
+## Instalação e Configuração
+
+1.  **Clone ou Extraia** o projeto para a pasta local.
+2.  **Instale as dependências** no seu ambiente virtual ou global:
+    ```powershell
+    pip install -r requirements.txt
+    ```
+    > **Nota**: Se houver bloqueio de proxy na rede do banco, certifique-se de estar com as variáveis de ambiente de proxy configuradas corretamente ou use o repositório interno se disponível.
+
+## Execução
+
+Para iniciar o servidor (ambiente de Produção ou Teste Local):
 
 ```powershell
 python Servidor.py
 ```
 
-## Documentação Detalhada
+O servidor abrirá uma interface gráfica (GUI) estilo "Dashboard" para acompanhamento em tempo real.
 
-Para entender como o servidor funciona, regras de agendamento e formato das tabelas, consulte:
-[DOCUMENTATION.md](DOCUMENTATION.md)
+### Variáveis de Ambiente Importantes
+*   `SERVIDOR_OFFLINE`: Defina como `True` para rodar sem conexão ao BigQuery (apenas simulação).
+*   `SERVIDOR_HEADLESS`: Defina como `1` para rodar sem interface gráfica (modo serviço).
+
+## Suporte
+Em caso de dúvidas ou falhas na monitoração, contate o **Analista Junior - Célula Python**.

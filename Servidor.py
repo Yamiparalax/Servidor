@@ -1,3 +1,13 @@
+# ==============================================================================
+# BANCO C6 S.A. | C6 HOLDING S.A.
+# Mensageria e Cargas Operacionais - 11.Célula Python
+# Analista Responsável - Monitoração e Sustentação
+#
+# PROJETO: Servidor de Automações (Agendador Central)
+# ARQUIVO: Servidor.py
+# DESCRIÇÃO: Ponto de entrada principal da aplicação. Gerencia inicialização
+#            e configuração de ambiente (HML/PROD/OFFLINE).
+# ==============================================================================
 import sys
 from pathlib import Path
 

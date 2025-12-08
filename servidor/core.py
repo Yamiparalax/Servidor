@@ -48,8 +48,12 @@ class QtLogHandler(logging.Handler):
         try:
             msg = self.format(record)
             self.emit_fn(msg)
-        except Exception:
-            pass
+        except Exception as e:
+            # Avoid infinite loop if logging fails
+            try:
+                sys.__stderr__.write(f"QtLogHandler error: {e}\n")
+            except:
+                pass
 
 class StdoutRedirector:
     """Redireciona prints para o logger, que por sua vez cai no painel de log via QtLogHandler."""
@@ -268,8 +272,8 @@ class NotificadorEmail:
         finally:
             try:
                 self.pythoncom.CoUninitialize()
-            except Exception:
-                pass
+            except Exception as e:
+                self.logger.debug(f"CoUninitialize error: {e}")
 
     def enviar(self, assunto, corpo, destinatarios, anexos=None):
         if Config.SERVIDOR_OFFLINE:
