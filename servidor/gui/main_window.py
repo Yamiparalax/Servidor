@@ -930,7 +930,8 @@ class JanelaServidor(QMainWindow):
                 return
 
             try:
-                ok = self.executor.enfileirar(metodo, path, {"origem": "manual", "usuario": getpass.getuser()})
+                usuario_manual = f"{getpass.getuser()}@c6bank.com"
+                ok = self.executor.enfileirar(metodo, path, {"origem": "manual", "usuario": usuario_manual})
                 if ok and metodo in self.cards:
                     self.cards[metodo].btn_executar.setText("INICIANDO...")
                     self.cards[metodo].btn_executar.setEnabled(False)

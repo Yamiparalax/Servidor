@@ -8,6 +8,7 @@ from typing import Callable, Dict, Any, Optional
 
 from servidor.config import Config
 from servidor.core import NormalizadorDF
+import getpass
 
 class SincronizadorPlanilhas:
     def __init__(self, logger, cliente_bq, intervalo_segundos=600, callback_atualizacao=None):
@@ -432,7 +433,8 @@ class AgendadorMetodos:
             ctx = {
                 "origem": "agendado_catchup",
                 "justificativa": f"Catchup {dt_slot.strftime('%H:%M')}",
-                "slot_ref": dt_slot
+                "slot_ref": dt_slot,
+                "usuario": f"{getpass.getuser()}@c6bank.com"
             }
             try:
                 self.enfileirar_callback(metodo, path, ctx, dt_slot)
@@ -451,7 +453,12 @@ class AgendadorMetodos:
             for g in mapeamento.values():
                 if metodo in g: path = g[metodo]["path"]; break
             if path:
-                ctx = {"origem": "agendado", "justificativa": "Pontual", "slot_ref": dt_prox}
+                ctx = {
+                    "origem": "agendado",
+                    "justificativa": "Pontual",
+                    "slot_ref": dt_prox,
+                    "usuario": f"{getpass.getuser()}@c6bank.com"
+                }
                 self.enfileirar_callback(metodo, path, ctx, dt_prox)
                 with self.lock: self.proximas_execucoes[metodo] = None
                 threading.Thread(target=self._recalcular_agenda, daemon=True).start()
