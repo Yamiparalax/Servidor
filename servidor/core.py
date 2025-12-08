@@ -1,5 +1,6 @@
 import logging
 import sys
+import ctypes
 import os
 import unicodedata
 import re
@@ -371,3 +372,31 @@ class DescobridorMetodos:
         # Log apenas em DEBUG agora
         self.logger.debug(f"Mapeamento atualizado: {stats}")
         return mapeamento
+
+class BloqueadorSuspensao:
+    ES_CONTINUOUS = 0x80000000
+    ES_SYSTEM_REQUIRED = 0x00000001
+    ES_DISPLAY_REQUIRED = 0x00000002
+
+    @staticmethod
+    def manter_acordado():
+        """Impede que o sistema entre em suspensão ou desligue a tela."""
+        try:
+            ctypes.windll.kernel32.SetThreadExecutionState(
+                BloqueadorSuspensao.ES_CONTINUOUS | \
+                BloqueadorSuspensao.ES_SYSTEM_REQUIRED | \
+                BloqueadorSuspensao.ES_DISPLAY_REQUIRED
+            )
+            return True
+        except Exception:
+            return False
+
+    @staticmethod
+    def permitir_suspensao():
+        """Permite que o sistema volte a suspender normalmente."""
+        try:
+            ctypes.windll.kernel32.SetThreadExecutionState(
+                BloqueadorSuspensao.ES_CONTINUOUS
+            )
+        except Exception:
+            pass

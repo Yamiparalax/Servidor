@@ -13,6 +13,7 @@ from servidor.core import (
     ClienteBigQuery,
     NotificadorEmail,
     DescobridorMetodos,
+    BloqueadorSuspensao,
 )
 from servidor.monitor import MonitorSolicitacoes, MonitorRecursos
 from servidor.scheduler import SincronizadorPlanilhas, AgendadorMetodos
@@ -25,6 +26,12 @@ def main():
     logger.info("=== SERVIDOR INICIADO (Refatorado) ===")
     logger.info(f"Versão Python: {sys.version}")
     logger.info(f"Log em: {log_path}")
+
+    # Bloqueio de suspensão (Tela/Sistema)
+    if BloqueadorSuspensao.manter_acordado():
+        logger.info("Sistema configurado para não suspender/bloquear tela (Always On).")
+    else:
+        logger.warning("Falha ao configurar bloqueio de suspensão.")
 
     # Configurações iniciais
     Config.DIR_SERVIDOR.mkdir(parents=True, exist_ok=True)
