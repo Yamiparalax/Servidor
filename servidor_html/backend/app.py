@@ -148,8 +148,27 @@ async def get_dashboard():
             "pid": info.get("pid")
         })
 
+    # Merge scheduling info into mapping for UI
+    mapeamento_ui = {}
+    if _mapeamento_cache:
+        # Create a copy to avoid mutating global cache concurrently (shallow copy of dicts is robust enough here)
+        import copy
+        mapeamento_ui = copy.deepcopy(_mapeamento_cache)
+        
+        for category, methods in mapeamento_ui.items():
+            for method_name, info in methods.items():
+                # Inject 'proxima' from snapshot_agenda
+                # snapshot_agenda keys are method names (stems/keys)
+                # info['norm_key'] might be the key to look up
+                norm = info.get("norm_key")
+                if norm and norm in snapshot_agenda:
+                    dt = snapshot_agenda[norm]
+                    info["proxima"] = dt.strftime("%d/%m %H:%M") if dt else "-"
+                else:
+                    info["proxima"] = "-"
+
     return {
-        "mapeamento": _mapeamento_cache,
+        "mapeamento": mapeamento_ui,
         "rodando": rodando,
         "historico": historico,
         "offline": Config.SERVIDOR_OFFLINE

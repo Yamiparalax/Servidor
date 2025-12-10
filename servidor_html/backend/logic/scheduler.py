@@ -286,18 +286,18 @@ class SincronizadorPlanilhas:
 
     def _loop(self):
         while not self._parar:
+            if not self._pausado:
+                try:
+                    self.sincronizar_de_arquivos()
+                except Exception:
+                    pass
+            
+            # Wait for interval
             for _ in range(int(self.intervalo_segundos)):
-                if self._parar:
-                    return
+                if self._parar: return
                 time.sleep(1)
-            if self._pausado:
-                continue
-            try:
-                self.sincronizar_de_arquivos()
-            except Exception:
-                pass
-            finally:
-                gc.collect()
+            
+            gc.collect()
 
     def parar(self):
         self._parar = True

@@ -124,28 +124,44 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function updateSidebar() {
-        // Keep 'Monitor' at top
-        const items = ['Monitor'];
-        if (currentData.mapeamento) {
-            Object.keys(currentData.mapeamento).forEach(cat => {
-                if (!items.includes(cat)) items.push(cat);
-            });
-        }
-
+        const navMenu = document.getElementById('navMenu');
         navMenu.innerHTML = '';
         
+        // Always add Monitor
+        const aMon = document.createElement('a');
+        aMon.href = '#';
+        aMon.className = 'nav-item';
+        if (document.getElementById('view-monitor').style.display !== 'none') aMon.classList.add('active');
+        aMon.dataset.target = 'monitor';
+        aMon.innerHTML = `<span class="material-icons">dashboard</span><span>Monitor</span>`;
+        aMon.addEventListener('click', () => showView('monitor'));
+        navMenu.appendChild(aMon);
+
+        if (!currentData.mapeamento || Object.keys(currentData.mapeamento).length === 0) {
+            const loading = document.createElement('div');
+            loading.style.padding = '12px 24px';
+            loading.style.color = '#666';
+            loading.style.fontStyle = 'italic';
+            loading.textContent = 'Carregando dados ou Sincronizando...';
+            navMenu.appendChild(loading);
+            return;
+        }
+
+        const items = [];
+        Object.keys(currentData.mapeamento).forEach(cat => {
+            if (cat !== 'Monitor') items.push(cat);
+        });
+        items.sort();
+
         items.forEach(item => {
             const a = document.createElement('a');
             a.href = '#';
             a.className = 'nav-item';
-            if (item === 'Monitor') {
-                a.dataset.target = 'monitor';
-                a.innerHTML = `<span class="material-icons">dashboard</span><span>Monitor</span>`;
-                a.addEventListener('click', () => showView('monitor'));
-            } else {
-                a.innerHTML = `<span class="material-icons">folder</span><span>${item}</span>`;
-                a.addEventListener('click', () => showView('automations', item));
+            if (categoryTitle.textContent === item && document.getElementById('view-automations').style.display === 'block') {
+                a.classList.add('active');
             }
+            a.innerHTML = `<span class="material-icons">folder</span><span>${item}</span>`;
+            a.addEventListener('click', () => showView('automations', item));
             navMenu.appendChild(a);
         });
     }
