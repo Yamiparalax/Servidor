@@ -15,7 +15,7 @@ from servidor.core import (
     DescobridorMetodos,
     BloqueadorSuspensao,
 )
-from servidor.monitor import MonitorSolicitacoes, MonitorRecursos
+from servidor.monitor import MonitorSolicitacoes
 from servidor.scheduler import SincronizadorPlanilhas, AgendadorMetodos
 from servidor.executor import ExecutorMetodos
 from servidor.gui.main_window import JanelaServidor
@@ -179,18 +179,17 @@ def main():
     sys.stdout = StdoutRedirector(logger, logging.INFO)
     sys.stderr = StdoutRedirector(logger, logging.ERROR)
 
-    monitor_recursos = MonitorRecursos(logger)
-    
+    # Passa o monitor_solicitacoes para a GUI (o de recursos foi removido)
     # Verifica se já executou hoje
     def ja_rodou(metodo):
         return sincronizador.ja_executou_hoje(metodo)
 
     janela = JanelaServidor(
-        logger,
-        executor,
-        descobridor,
+        logger, 
+        executor, 
+        descobridor, 
         sincronizador,
-        monitor_recursos,
+        monitor_solicitacoes,
         lambda m: agendador.get_proxima_exec_str(m),
         lambda m: agendador.get_status_agendamento(m),
         ja_rodou
@@ -213,8 +212,7 @@ def main():
 
     janela.show()
     
-    # Inicia monitor de recursos
-    monitor_recursos.start()
+
 
     return app.exec()
 

@@ -67,7 +67,7 @@ class Config:
     )
 
     # Concorrência
-    MAX_CONCURRENCY = int(os.getenv("SERVIDOR_MAX_CONCURRENCY", "3"))
+    MAX_CONCURRENCY = int(os.getenv("SERVIDOR_MAX_CONCURRENCY", "5"))
 
     # Downloads e planilhas
     DOWNLOADS_DIR = _path_from_env("SERVIDOR_DOWNLOAD_DIR", Path.home() / "Downloads")

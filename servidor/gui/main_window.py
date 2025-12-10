@@ -58,7 +58,7 @@ class JanelaServidor(QMainWindow):
         executor,
         descobridor,
         sincronizador,
-        monitor_recursos,
+        monitor_solicitacoes,
         get_proxima_exec_str_callback=None,
         get_status_agendamento_callback=None,
         verificar_execucao_hoje=None,
@@ -68,7 +68,7 @@ class JanelaServidor(QMainWindow):
         self.executor = executor
         self.descobridor = descobridor
         self.sincronizador = sincronizador
-        self.monitor_recursos = monitor_recursos
+        self.monitor_solicitacoes = monitor_solicitacoes
         self.get_prox_exec = get_proxima_exec_str_callback
         self.get_status_agendamento = get_status_agendamento_callback
         self.verificar_execucao_hoje = verificar_execucao_hoje
@@ -93,13 +93,14 @@ class JanelaServidor(QMainWindow):
         self._busca_ativa = False
         self._tab_antes_busca = None
 
-        self.cpu_bar = None
-        self.ram_bar = None
-        self.swap_bar = None
-        self.lbl_temp = None
+        self.navegacao_indices = {}
+        self.card_secao = {}
+        self._busca_texto = ""
+        self._busca_ativa = False
+        self._tab_antes_busca = None
+        
         self._ultima_atualizacao_planilhas = None
         self._proxima_atualizacao_planilhas = None
-        self.lista_recursos_metodos = None
 
         self._resumo_sucesso = []
         self._resumo_falhas = []
@@ -121,13 +122,7 @@ class JanelaServidor(QMainWindow):
         self.sig_log.connect(self._append_log)
 
         try:
-            self.monitor_recursos.sinal_recursos.connect(self._on_recursos_atualizados)
-            self.monitor_recursos.sinal_msg.connect(self._append_log)
-        except Exception:
-            pass
-
-        try:
-            QTimer.singleShot(500, self._start_monitor_recursos)
+            self.monitor_solicitacoes.sinal_msg.connect(self._append_log)
         except Exception:
             pass
 
@@ -544,7 +539,8 @@ class JanelaServidor(QMainWindow):
         if u or p:
             self.atualizar_status_planilhas(u, p)
 
-        self._aplicar_busca_cards()
+        if self._busca_ativa:
+             self._aplicar_busca_cards_global()
 
     def atualizar_mapeamento_threadsafe(self, e, r):
         try:
@@ -647,28 +643,25 @@ class JanelaServidor(QMainWindow):
 
         # MONITOR
         pm = QWidget()
-        lm = QVBoxLayout(pm)
-        sm = QScrollArea()
-        sm.setWidgetResizable(True)
-        cm = QWidget()
-        gm = QGridLayout(cm)
-        gm.setSpacing(20)
-        gm.setContentsMargins(30, 30, 30, 30)
-
+        # Layout principal da aba MONITOR
+        # Queremos 5 colunas verticais ocupando a tela inteira
+        lm = QHBoxLayout(pm)
+        lm.setSpacing(10)
+        lm.setContentsMargins(10, 10, 10, 10)
+        
+        # Cria as 5 colunas
         self.dashboard_boxes["pendentes"] = DashboardBox("A RODAR HOJE", p["amarelo"])
         self.dashboard_boxes["rodando"] = DashboardBox("RODANDO AGORA", p["azul"])
         self.dashboard_boxes["sucesso"] = DashboardBox("SUCESSO HOJE", p["sucesso"])
-        self.dashboard_boxes["falhas"] = DashboardBox("FALHAS / ATENÇÃO HOJE", p["destaque"])
-        self.dashboard_boxes["outros"] = DashboardBox("OUTROS STATUS HOJE", p["texto_sec"])
-
-        gm.addWidget(self.dashboard_boxes["pendentes"], 0, 0)
-        gm.addWidget(self.dashboard_boxes["rodando"], 0, 1)
-        gm.addWidget(self.dashboard_boxes["sucesso"], 1, 0)
-        gm.addWidget(self.dashboard_boxes["falhas"], 1, 1)
-        gm.addWidget(self.dashboard_boxes["outros"], 2, 0, 1, 2)
-
-        sm.setWidget(cm)
-        lm.addWidget(sm)
+        self.dashboard_boxes["falhas"] = DashboardBox("FALHAS / ATENÇÃO", p["destaque"])
+        self.dashboard_boxes["outros"] = DashboardBox("OUTROS STATUS", p["texto_sec"])
+        
+        # Adiciona ao layout horizontal (5 colunas lado a lado)
+        lm.addWidget(self.dashboard_boxes["pendentes"])
+        lm.addWidget(self.dashboard_boxes["rodando"])
+        lm.addWidget(self.dashboard_boxes["sucesso"])
+        lm.addWidget(self.dashboard_boxes["falhas"])
+        lm.addWidget(self.dashboard_boxes["outros"])
 
         item = QListWidgetItem("MONITOR")
         item.setData(Qt.UserRole, "monitor")
@@ -676,18 +669,25 @@ class JanelaServidor(QMainWindow):
         self.nav_list.addItem(item)
         self.stack.addWidget(pm)
 
-        # RECURSOS
-        tr = QWidget()
-        lr = QVBoxLayout(tr)
-        lr.addWidget(QLabel("Consumo por processo"))
-        self.lista_recursos_metodos = QListWidget()
-        lr.addWidget(self.lista_recursos_metodos)
-
-        item = QListWidgetItem("RECURSOS")
-        item.setData(Qt.UserRole, "recursos")
-        item.setSizeHint(QSize(200, 44))
-        self.nav_list.addItem(item)
-        self.stack.addWidget(tr)
+        # ABA BUSCA (Global)
+        pb = QWidget()
+        lb = QVBoxLayout(pb)
+        # Scroll para busca
+        sb = QScrollArea()
+        sb.setWidgetResizable(True)
+        cb = QWidget()
+        # Flow layout para resultados de busca (usando grid para simular)
+        self.gb_busca = QGridLayout(cb)
+        self.gb_busca.setSpacing(20)
+        self.gb_busca.setContentsMargins(30, 30, 30, 30)
+        # Alinhamento topo/esquerda
+        self.gb_busca.setAlignment(Qt.AlignTop | Qt.AlignLeft)
+        
+        sb.setWidget(cb)
+        lb.addWidget(sb)
+        
+        self.idx_busca = self.stack.addWidget(pb)
+        # Não adicionamos na nav_list pois é acessada via barra de busca
 
         # 1. CURRENCY (REMOVIDO)
         # item_cur = QListWidgetItem("CURRENCY")
@@ -771,8 +771,8 @@ class JanelaServidor(QMainWindow):
 
         self._preencher_cards()
         self._atualizar_monitor()
-        self._atualizar_tab_recursos()
-        self._aplicar_busca_cards()
+        if self._busca_ativa:
+            self._aplicar_busca_cards_global()
 
         try:
             # Tenta selecionar a primeira categoria encontrada, se houver, senao Monitor
@@ -1002,6 +1002,91 @@ class JanelaServidor(QMainWindow):
             except Exception:
                 pass
 
+    # --- LÓGICA DE BUSCA GLOBAL ---
+    def _on_busca_text_changed(self, texto):
+        texto = texto.lower().strip()
+        
+        if not texto and self._busca_ativa:
+            # Limpou: Restaura todos os cards para suas posições originais
+            self._restaurar_cards_posicao_original()
+            
+            self._busca_ativa = False
+            if self._tab_antes_busca is not None:
+                # Volta para a tab que estava antes
+                if self._tab_antes_busca < self.stack.count():
+                   self.stack.setCurrentIndex(self._tab_antes_busca)
+            self._tab_antes_busca = None
+            return
+
+        self._busca_texto = texto
+        
+        # Se começou a buscar agora, salva onde estava e vai para a tab de busca
+        if texto and not self._busca_ativa:
+            self._busca_ativa = True
+            self._tab_antes_busca = self.stack.currentIndex()
+            # Muda para a tab de busca (índice salvo em self.idx_busca)
+            self.stack.setCurrentIndex(self.idx_busca)
+
+        if self._busca_ativa:
+            self._aplicar_busca_cards_global()
+
+    def _restaurar_cards_posicao_original(self):
+        # Percorre por categoria para manter organização
+        for secao, info in self.card_secao.items():
+            layout = info["layout"]
+            
+            # Coleta cards dessa secao
+            cards_secao = []
+            if secao in self.mapeamento:
+                for m in self.mapeamento[secao].keys():
+                    if m in self.cards:
+                         cards_secao.append( (m, self.cards[m]) )
+            
+            # Ordena alfabeticamente
+            cards_secao.sort(key=lambda x: x[0])
+            
+            # Reinsere no Grid
+            MAX_COLS = 3
+            for idx, (m, c) in enumerate(cards_secao):
+               # Remove do parent atual (busca ou nenhum)
+               c.setParent(None)
+               
+               row = idx // MAX_COLS
+               col = idx % MAX_COLS
+               layout.addWidget(c, row, col)
+               c.setVisible(True)
+
+    def _aplicar_busca_cards_global(self):
+        termo = self._busca_texto.lower().strip()
+        
+        # Remove todos os widgets do layout de busca
+        # (Isso não deleta o objeto card, apenas tira do layout)
+        while self.gb_busca.count():
+            item = self.gb_busca.takeAt(0)
+            if item.widget():
+                item.widget().setParent(None)
+        
+        if not termo:
+            return
+
+        matches = []
+        for met, card in self.cards.items():
+            # Verifica texto
+            txt = f"{met} {card.lbl_status.text()}".lower()
+            if termo in txt:
+                matches.append((met, card))
+        
+        # Ordena matches
+        matches.sort(key=lambda x: x[0])
+        
+        # Adiciona ao grid de busca
+        MAX_COLS = 3
+        for idx, (m, card) in enumerate(matches):
+             row = idx // MAX_COLS
+             col = idx % MAX_COLS
+             self.gb_busca.addWidget(card, row, col)
+             card.setVisible(True)
+
     def _achar_ultimo_log_metodo(self, met):
         try:
             base = Config.DIR_LOGS_BASE / str(met).lower()
@@ -1040,46 +1125,8 @@ class JanelaServidor(QMainWindow):
             except Exception:
                 pass
 
-    def _on_busca_text_changed(self, t):
-        texto = (t or "").strip().lower()
 
-        # Logica de troca de aba
-        if texto and not self._busca_ativa:
-            # Começou a digitar: salva onde estava e vai pro inicio (onde tem cards)
-            self._tab_antes_busca = self.stack.currentIndex()
-            self._busca_ativa = True
-            self._ir_para_secao("monitor")
-        elif not texto and self._busca_ativa:
-            # Limpou: volta pra onde estava
-            self._busca_ativa = False
-            if self._tab_antes_busca is not None:
-                self.stack.setCurrentIndex(self._tab_antes_busca)
-            self._tab_antes_busca = None
 
-        self._busca_texto = texto
-        self._aplicar_busca_cards()
-
-    def _aplicar_busca_cards(self):
-        q = (self._busca_texto or "").strip().lower()
-        if not self.cards:
-            return
-
-        for met, card in self.cards.items():
-            try:
-                if not q:
-                    card.setVisible(True)
-                    continue
-                alvo = str(met).lower()
-                info = self.infos.get(met, {}) or {}
-                area = str(info.get("area_solicitante", "")).lower()
-                nome = str(info.get("nome_automacao", "")).lower()
-                ok = (q in alvo) or (q in area) or (q in nome)
-                card.setVisible(bool(ok))
-            except Exception:
-                try:
-                    card.setVisible(True)
-                except Exception:
-                    pass
 
     def _tick_gui(self):
         try:
@@ -1090,10 +1137,7 @@ class JanelaServidor(QMainWindow):
             self._atualizar_monitor()
         except Exception:
             pass
-        try:
-            self._atualizar_tab_recursos()
-        except Exception:
-            pass
+
         try:
             u = getattr(self.sincronizador, "ultima_execucao", None)
             p = getattr(self.sincronizador, "proxima_execucao", None)
@@ -1102,9 +1146,6 @@ class JanelaServidor(QMainWindow):
         except Exception:
             pass
 
-    def _atualizar_tab_recursos(self):
-        if not self.lista_recursos_metodos:
-            return
 
         try:
             execs = self.executor.snapshot_execucao()
