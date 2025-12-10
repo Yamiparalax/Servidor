@@ -23,6 +23,16 @@ from servidor.gui.main_window import JanelaServidor
 def main():
     # Inicia logger
     logger, log_path, fmt = ConfiguradorLogger.criar_logger()
+    
+    # Hook universal para exceções não tratadas
+    def handle_exception(exc_type, exc_value, exc_traceback):
+        if issubclass(exc_type, KeyboardInterrupt):
+            sys.__excepthook__(exc_type, exc_value, exc_traceback)
+            return
+        logger.critical("Uncaught exception", exc_info=(exc_type, exc_value, exc_traceback))
+
+    sys.excepthook = handle_exception
+    
     logger.info("=== SERVIDOR INICIADO (Refatorado) ===")
     logger.info(f"Versão Python: {sys.version}")
     logger.info(f"Log em: {log_path}")
@@ -117,7 +127,27 @@ def main():
         logger.info(f"EXEC_FIM: {metodo} rc={rc}")
         if janela_holder["janela"]:
             janela_holder["janela"].marcar_metodo_ocupado(metodo, False)
-        # Registra execução imediata e pode forçar sincronização se necessário 
+        
+        # Se for solicitação, notifica o usuário final
+        origem = str(ctx.get("origem", "")).lower()
+        usuario = ctx.get("usuario")
+        
+        if origem == "solicitacao" and usuario and "@" in usuario:
+            assunto = f"Solicitação {metodo}: "
+            if rc == 0:
+                assunto += "SUCESSO"
+                corpo = "Sua solicitação foi processada com sucesso."
+            elif rc == 2:
+                assunto += "SEM DADOS/ALERTA"
+                corpo = "Sua solicitação rodou, mas alertou sem dados ou aviso."
+            else:
+                assunto += "FALHA/ERRO"
+                corpo = "Ocorreu um erro durante a execução da sua solicitação. Verifique com a equipe."
+
+            caminho_log = Path(log_filho) if log_filho else None
+            anexos = [caminho_log] if caminho_log and caminho_log.exists() else []
+            
+            notificador.enviar(assunto, corpo, [usuario], anexos) 
 
     executor.callback_exec_inicio = cb_exec_inicio
     executor.callback_exec_fim = cb_exec_fim
@@ -168,16 +198,18 @@ def main():
     janela_holder["janela"] = janela
     janela.agendador = agendador
 
-    # Inicia threads
-    sincronizador.iniciar_monitoramento()
-    
-    # Sincroniza dados iniciais
+    # Sincroniza dados iniciais (BLOCKING - Garante dados antes da GUI)
+    logger.info("Iniciando sincronização de dados (bloqueante)...")
     if Config.SERVIDOR_OFFLINE:
         sincronizador.sincronizar_de_arquivos()
     else:
-        # Tenta sincronização rápida em background
-        t = threading.Thread(target=sincronizador.sincronizar_de_arquivos, daemon=True)
-        t.start()
+        # No modo online, também fazemos bloqueante para não abrir vazio
+        sincronizador.sincronizar_de_arquivos()
+        
+    logger.info("Sincronização inicial concluída.")
+
+    # Inicia threads de monitoramento em background
+    sincronizador.iniciar_monitoramento()
 
     janela.show()
     

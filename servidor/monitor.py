@@ -245,13 +245,8 @@ class MonitorRecursos(QThread):
         self._lock = threading.Lock()
 
     def _resolver_temp_dir(self) -> Path:
-        base_env = os.environ.get("SERVIDOR_TEMP_DIR")
-        if base_env:
-            base = Path(base_env).expanduser()
-        else:
-            base = Path.home() / ".servidor_temp"
-        base.mkdir(parents=True, exist_ok=True)
-        return base
+        # Usa o mesmo diretório de logs definido na Config para garantir que limpamos o lugar certo
+        return Config.DIR_LOGS_BASE
 
     def _calcular_tamanho_temp_mb(self) -> int:
         try:
@@ -340,7 +335,11 @@ class MonitorRecursos(QThread):
                 gc.collect()
 
             time.sleep(1)
-            contador_temp = (contador_temp + 1) % 30
+            contador_temp = (contador_temp + 1) % 300  # 300 segundos = 5 minutos
+            
+            # Auto-limpeza a cada 5 minutos
+            if contador_temp == 0:
+                 self.limpar_temp()
 
     def parar(self):
         self._stop = True

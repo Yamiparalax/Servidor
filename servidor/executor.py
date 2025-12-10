@@ -53,7 +53,18 @@ class ExecutorMetodos:
             env["SERVIDOR_ORIGEM"] = Config.NOME_SERVIDOR
             env["MODO_EXECUCAO"] = (contexto.get("origem", "") or "").upper()
             env["OBSERVACAO"] = contexto.get("observacao", "") or ""
-            env["USUARIO_EXEC"] = contexto.get("usuario", "") or ""
+            
+            usuario_solicitante = contexto.get("usuario", "") or ""
+            env["USUARIO_EXEC"] = usuario_solicitante
+            
+            # Se houver usuário solicitante (e.g. "sofia.fernandes@c6bank.com"),
+            # forçamos as variáveis de ambiente para que o script python (getpass.getuser())
+            # pegue este usuário e não o da máquina.
+            if usuario_solicitante:
+                user_only = usuario_solicitante.split("@")[0].strip()
+                env["USERNAME"] = user_only
+                env["USER"] = user_only
+                env["LOGNAME"] = user_only
 
             dia_dir = Config.DIR_LOGS_BASE / metodo.lower() / datetime.now(Config.TZ).strftime("%d.%m.%Y")
             dia_dir.mkdir(parents=True, exist_ok=True)

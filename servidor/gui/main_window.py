@@ -39,7 +39,13 @@ from servidor.gui.components import (
     LogDialog,
     smart_update_listwidget,
 )
-from servidor.gui.widgets_extras import WeatherDialog, CurrencyDialog, CurrencyPage, WeatherWidget
+from servidor.gui.components import (
+    CardNetflix,
+    DashboardBox,
+    LogDialog,
+    smart_update_listwidget,
+)
+# from servidor.gui.widgets_extras import WeatherDialog, CurrencyDialog, CurrencyPage, WeatherWidget (REMOVIDO)
 
 class JanelaServidor(QMainWindow):
     sig_atualizar_dados = Signal(object, object)
@@ -327,13 +333,9 @@ class JanelaServidor(QMainWindow):
         topo.addWidget(w_ram)
         topo.addWidget(w_swp)
         topo.addSpacing(20)
-        # Widget de Clima FIXO
-        try:
-            self.widget_clima = WeatherWidget()
-            topo.addWidget(self.widget_clima)
-        except Exception:
-            pass
-
+        topo.addSpacing(20)
+        # Widget de Clima FIXO (REMOVIDO)
+        
         topo.addStretch(1)
         topo.addWidget(self.input_busca)
         topo.addSpacing(10)
@@ -662,14 +664,14 @@ class JanelaServidor(QMainWindow):
         self.nav_list.addItem(item)
         self.stack.addWidget(tr)
 
-        # 1. CURRENCY (NOVA ABA)
-        item_cur = QListWidgetItem("CURRENCY")
-        item_cur.setData(Qt.UserRole, "currency")
-        item_cur.setSizeHint(QSize(200, 50))
-        self.nav_list.addItem(item_cur)
-        
-        page_currency = CurrencyPage()
-        self.stack.addWidget(page_currency)
+        # 1. CURRENCY (REMOVIDO)
+        # item_cur = QListWidgetItem("CURRENCY")
+        # item_cur.setData(Qt.UserRole, "currency")
+        # item_cur.setSizeHint(QSize(200, 50))
+        # self.nav_list.addItem(item_cur)
+        # 
+        # page_currency = CurrencyPage()
+        # self.stack.addWidget(page_currency)
 
         # 2. ABAS DINAMICAS POR CATEGORIA
         # Ordena categorias (keys do mapeamento)
@@ -750,8 +752,10 @@ class JanelaServidor(QMainWindow):
         try:
             # Tenta selecionar a primeira categoria encontrada, se houver, senao Monitor
             if len(categorias) > 0:
-                # 0=Monitor, 1=Recursos, 2=Currency, 3=Primeira Categoria...
-                self.nav_list.setCurrentRow(3) 
+            # Tenta selecionar a primeira categoria encontrada, se houver, senao Monitor
+            if len(categorias) > 0:
+                # 0=Monitor, 1=Recursos, 2=Primeira Categoria...
+                self.nav_list.setCurrentRow(2) 
             else:
                 self.nav_list.setCurrentRow(0)
         except Exception:
