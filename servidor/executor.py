@@ -204,3 +204,17 @@ class ExecutorMetodos:
                 e,
             )
             return False
+    def parar_todos_processos(self):
+        self.logger.info("executor_parar_tudo_inicio")
+        with self.cv:
+            # limpar fila
+            self.fila.clear()
+            
+            # copiar dict de execução para iterar com segurança
+            snapshot = dict(self.em_execucao)
+            
+        for metodo in snapshot:
+            self.logger.info("Encerrando forcadamente: %s", metodo)
+            self.parar_processo(metodo)
+            
+        self.logger.info("executor_parar_tudo_fim")

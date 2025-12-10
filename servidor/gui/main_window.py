@@ -217,6 +217,31 @@ class JanelaServidor(QMainWindow):
         except Exception:
             pass
 
+    def closeEvent(self, event):
+        self.logger.info("GUI: Solicitação de fechamento recebida. Encerrando processos...")
+        try:
+            self.hide()
+        except Exception:
+            pass
+            
+        try:
+            if self.sincronizador:
+                self.sincronizador._parar = True
+            
+            if self.monitor_solicitacoes:
+                self.monitor_solicitacoes.parar()
+                
+            if self.monitor_recursos:
+                self.monitor_recursos.parar()
+                
+            if self.executor:
+                self.executor.parar_todos_processos()
+                
+        except Exception as e:
+            self.logger.error("Erro ao encerrar componentes: %s", e)
+            
+        event.accept()
+
     def _setup_ui(self):
         self.setStyleSheet(EstilosGUI.estilo_janela())
         self.central_widget = QWidget()
@@ -1023,7 +1048,7 @@ class JanelaServidor(QMainWindow):
             # Começou a digitar: salva onde estava e vai pro inicio (onde tem cards)
             self._tab_antes_busca = self.stack.currentIndex()
             self._busca_ativa = True
-            self._ir_para_secao("inicio")
+            self._ir_para_secao("monitor")
         elif not texto and self._busca_ativa:
             # Limpou: volta pra onde estava
             self._busca_ativa = False
