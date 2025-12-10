@@ -1,0 +1,11 @@
+fastapi
+uvicorn[standard]
+python-multipart
+websockets
+pandas
+pandas-gbq
+openpyxl
+psutil
+playwright
+google-cloud-bigquery
+jinja2
