@@ -2,20 +2,22 @@ class EstilosGUI:
     @staticmethod
     def obter_paleta():
         return {
-            "bg_fundo": "#0B0E14",       # Deep Dark Blue (Main Background)
-            "bg_card": "#151922",        # Panel/Card Background
-            "bg_card_hover": "#1E2330",  # Hover State
-            "destaque": "#6C5DD3",       # Primary Purple/Blurple (Curated.Media style)
-            "destaque_hover": "#5D5FEF",
-            "sucesso": "#00FF94",        # Neon Green
-            "aviso": "#FFB039",          # Orange
-            "erro": "#FF4C4C",           # Red
-            "branco": "#FFFFFF",
-            "texto_sec": "#8F95B2",      # Blue-ish Gray
-            "borda_suave": "#2D3246",    # Separators
-            "azul": "#3F8CFF",           # Secondary Blue
-            "amarelo": "#FFB039",
-            "verde": "#00FF94",
+            "bg_fundo": "#202124",       # Google Dark Background
+            "bg_card": "#303134",        # Google Dark Surface
+            "bg_card_hover": "#3C4043",  # Lighter Surface
+            "destaque": "#8AB4F8",       # Google Blue (Light)
+            "destaque_hover": "#AECBFA",
+            "sucesso": "#81C995",        # Google Green (Light)
+            "aviso": "#FDD663",          # Google Yellow (Light)
+            "erro": "#F28B82",           # Google Red (Light)
+            "branco": "#E8EAED",         # High Emphasis Text
+            "texto_sec": "#9AA0A6",      # Medium Emphasis Text
+            "borda_suave": "#5F6368",    # Borders
+            "azul": "#8AB4F8",           # Secondary Blue
+            "amarelo": "#FDD663",
+            "verde": "#81C995",
+            "vermelho": "#F28B82",
+            "roxo": "#C58AF9",           # Google Python Purpleish
         }
 
     @staticmethod
@@ -28,18 +30,22 @@ class EstilosGUI:
             QWidget {{
                 background-color: {p['bg_fundo']};
                 color: {p['branco']};
-                font-family: 'Montserrat', 'Segoe UI', sans-serif;
+                font-family: 'Roboto', 'Segoe UI', sans-serif;
             }}
+            /* Material Scrollbar */
             QScrollBar:vertical {{
                 border: none;
                 background: {p['bg_fundo']};
-                width: 8px;
-                margin: 0px 0px 0px 0px;
+                width: 10px;
+                margin: 0px;
             }}
             QScrollBar::handle:vertical {{
                 background: {p['borda_suave']};
-                min-height: 20px;
-                border-radius: 4px;
+                min-height: 30px;
+                border-radius: 5px;
+            }}
+            QScrollBar::handle:vertical:hover {{
+                background: {p['texto_sec']};
             }}
             QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
                 height: 0px;
@@ -47,102 +53,109 @@ class EstilosGUI:
             QScrollBar:horizontal {{
                 border: none;
                 background: {p['bg_fundo']};
-                height: 8px;
-                margin: 0px 0px 0px 0px;
+                height: 10px;
+                margin: 0px;
             }}
             QScrollBar::handle:horizontal {{
                 background: {p['borda_suave']};
-                min-width: 20px;
-                border-radius: 4px;
+                min-width: 30px;
+                border-radius: 5px;
+            }}
+            QScrollBar::handle:horizontal:hover {{
+                background: {p['texto_sec']};
             }}
             QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{
                 width: 0px;
             }}
+            
             QToolTip {{
-                background-color: {p['bg_card']};
-                color: {p['branco']};
-                border: 1px solid {p['borda_suave']};
-                padding: 5px;
-            }}
-            /* Sidebar List */
-            QListWidget#listaNavegacao {{
-                background-color: {p['bg_card']};
-                border: none;
-                border-right: 1px solid {p['borda_suave']};
-                outline: none;
-                padding-top: 30px;
-            }}
-            QListWidget#listaNavegacao::item {{
-                height: 60px;
-                padding-left: 25px;
-                color: {p['texto_sec']};
-                border-left: 3px solid transparent;
-                margin-bottom: 4px;
-                font-weight: 600;
-                font-size: 13px;
-                /* Transition effort via style sheet is limited in Qt, but we can tune colors */
-            }}
-            QListWidget#listaNavegacao::item:hover {{
                 background-color: {p['bg_card_hover']};
                 color: {p['branco']};
-                border-left: 3px solid {p['texto_sec']};
+                border: 1px solid {p['borda_suave']};
+                padding: 8px;
+                border-radius: 4px;
+            }}
+            
+            /* Sidebar - Navigation Rail Style */
+            QListWidget#listaNavegacao {{
+                background-color: {p['bg_fundo']};
+                border: none;
+                padding-top: 20px;
+                outline: none;
+            }}
+            QListWidget#listaNavegacao::item {{
+                height: 56px; /* Material standard list item height */
+                padding-left: 24px;
+                color: {p['texto_sec']};
+                border-radius: 0 28px 28px 0; /* Pill shape right */
+                margin-right: 16px; 
+                font-weight: 500;
+                font-size: 14px;
+            }}
+            QListWidget#listaNavegacao::item:hover {{
+                background-color: rgba(138, 180, 248, 0.08); /* Blue Tint */
+                color: {p['destaque']};
             }}
             QListWidget#listaNavegacao::item:selected {{
-                background-color: rgba(108, 93, 211, 0.10); /* Subtle Purple Tint */
-                color: {p['branco']};
-                border-left: 3px solid {p['destaque']};
-                font-weight: 800;
+                background-color: rgba(138, 180, 248, 0.16); /* Stronger Blue Tint */
+                color: {p['destaque']};
+                font-weight: 700;
             }}
         """
 
     @staticmethod
-    def estilo_card_netflix():
+    def estilo_card_material():
         p = EstilosGUI.obter_paleta()
         return f"""
-            QFrame#cardNetflix {{
+            QFrame#AutomationCard {{
                 background-color: {p['bg_card']};
                 border-radius: 12px;
                 border: 1px solid {p['borda_suave']};
             }}
-            QFrame#cardNetflix:hover {{
+            QFrame#AutomationCard:hover {{
                 background-color: {p['bg_card_hover']};
-                border: 1px solid {p['destaque']}; 
-                /* Simulation of a glow could be done with more complex border logic if needed */
+                border: 1px solid {p['destaque']};
+                /* Elevation simulation */
             }}
-            QLabel#tituloCard {{
+            QLabel#cardTitle {{
                 color: {p['branco']};
-                font-size: 15px;
-                font-weight: 800;
+                font-size: 16px;
+                font-weight: 500; /* Medium */
                 background-color: transparent;
-                letter-spacing: 0.5px;
             }}
-            QLabel#subtituloCard {{
+            QLabel#cardDetail {{
                 color: {p['texto_sec']};
-                font-size: 11px;
-                font-weight: 500;
+                font-size: 12px;
+                font-weight: 400;
                 background-color: transparent;
             }}
-            QLabel#statusBadge {{
-                font-size: 10px;
-                font-weight: 800;
-                padding: 4px 8px;
-                border-radius: 4px;
+            QLabel#statusChip {{
+                font-size: 11px;
+                font-weight: 700;
+                padding: 4px 12px;
+                border-radius: 12px; /* Pill shape */
             }}
             QPushButton {{
-                background-color: {p['destaque']};
-                color: {p['branco']};
-                border: none;
-                border-radius: 6px;
-                font-weight: 700;
-                font-size: 11px;
+                background-color: transparent;
+                color: {p['destaque']};
+                border: 1px solid {p['borda_suave']};
+                border-radius: 18px; /* Material Button Pill */
+                font-weight: 600;
+                font-size: 12px;
+                padding: 0 16px;
                 text-transform: uppercase;
             }}
             QPushButton:hover {{
-                background-color: {p['destaque_hover']};
+                background-color: rgba(138, 180, 248, 0.08);
+                border: 1px solid {p['destaque']};
             }}
-            QPushButton:disabled {{
-                background-color: {p['borda_suave']};
-                color: {p['texto_sec']};
+            QPushButton#btnActionMajor {{
+                background-color: {p['destaque']};
+                color: {p['bg_fundo']}; /* Contrast text */
+                border: none;
+            }}
+            QPushButton#btnActionMajor:hover {{
+                background-color: {p['destaque_hover']};
             }}
         """
 
@@ -153,33 +166,32 @@ class EstilosGUI:
             QFrame#DashboardBox {{
                 background-color: {p['bg_card']};
                 border-radius: 16px;
-                border: 1px solid {p['borda_suave']};
+                border: 1px solid transparent; 
             }}
             QLabel#tituloBox {{
                 color: {cor_topo};
                 font-size: 14px;
-                font-weight: 900;
-                margin-bottom: 10px;
-                text-transform: uppercase;
+                font-weight: 700;
+                margin-bottom: 16px;
+                letter-spacing: 1px;
+                background: transparent;
             }}
             QListWidget {{
                 background-color: transparent;
                 border: none;
-                color: {p['texto_sec']};
+                color: {p['branco']};
                 font-size: 13px;
+                font-weight: 400;
             }}
             QListWidget::item {{
-                padding: 5px;
+                padding: 12px 0;
                 border-bottom: 1px solid {p['borda_suave']};
             }}
-            QListWidget::item:selected {{
-                background-color: {p['amarelo']};
-                color: #000000;
-                border-radius: 4px;
+            QListWidget::item:last {{
+                border-bottom: none;
             }}
             QListWidget::item:hover {{
-                background-color: {p['bg_card_hover']};
-                color: {p['branco']};
+                background-color: rgba(255, 255, 255, 0.04);
             }}
         """
 
@@ -189,18 +201,21 @@ class EstilosGUI:
         return f"""
             QPushButton {{
                 background-color: {p['destaque']};
-                color: {p['branco']};
+                color: {p['bg_fundo']};
                 border: none;
-                border-radius: 10px;
-                padding: 8px 16px;
-                font-weight: 700;
-                font-size: 12px;
+                border-radius: 20px;
+                padding: 10px 24px;
+                font-weight: 600;
+                font-size: 13px;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
             }}
             QPushButton:hover {{
                 background-color: {p['destaque_hover']};
+                /* box-shadow not supported in Qt stylesheets natively */
             }}
             QPushButton:pressed {{
-                background-color: {p['bg_card']};
+                background-color: {p['destaque']};
             }}
         """
 
@@ -209,18 +224,18 @@ class EstilosGUI:
         p = EstilosGUI.obter_paleta()
         return f"""
             QPushButton {{
-                background-color: {p['bg_card']};
+                background-color: transparent;
                 color: {p['texto_sec']};
                 border: 1px solid {p['borda_suave']};
-                border-radius: 10px;
+                border-radius: 18px;
                 padding: 8px 16px;
-                font-weight: 700;
-                font-size: 11px;
+                font-weight: 600;
+                font-size: 12px;
             }}
             QPushButton:checked {{
-                background-color: {p['sucesso']};
-                color: #000000;
-                border: 1px solid {p['sucesso']};
+                background-color: rgba(129, 201, 149, 0.16); 
+                color: {p['verde']};
+                border: 1px solid {p['verde']};
             }}
             QPushButton:hover {{
                 border: 1px solid {p['branco']};

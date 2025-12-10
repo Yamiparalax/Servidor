@@ -326,6 +326,8 @@ class AgendadorMetodos:
         self.lock = threading.Lock()
         self.proximas_execucoes = {}
         self.status_agendamento = {}
+        self._ultimos_terminos = {} # {metodo: datetime_fim}
+        self._metodos_rodando = set()
         self._stop = False
         self.data_ref = datetime.now(self.tz).date()
         self._catchup_executado = False
@@ -339,7 +341,17 @@ class AgendadorMetodos:
 
     def atualizar_planilhas(self):
         self._recalcular_agenda()
-        self._catchup_executado = False
+
+    def registrar_inicio_execucao(self, metodo):
+        with self.lock:
+            self._metodos_rodando.add(NormalizadorDF.norm_key(metodo))
+
+    def registrar_fim_execucao(self, metodo):
+        with self.lock:
+            nk = NormalizadorDF.norm_key(metodo)
+            if nk in self._metodos_rodando:
+                self._metodos_rodando.remove(nk)
+            self._ultimos_terminos[nk] = datetime.now(self.tz)
 
     def _normalizar_horarios(self, texto: str):
         if not texto: return []
@@ -413,32 +425,105 @@ class AgendadorMetodos:
 
     def _catchup_pendencias(self, agora: datetime):
         mapeamento = self.obter_mapeamento() or {}
-        pendencias = []
+        df_exec = self.obter_exec_df()
+        
+        # Converte df_exec para fácil consulta de contagem hoje
+        contagem_hoje = {}
+        if df_exec is not None and not df_exec.empty and "dt_full" in df_exec.columns:
+            try:
+                hoje = agora.date()
+                df_hj = df_exec[df_exec["dt_full"].dt.date == hoje]
+                if not df_hj.empty:
+                    # Agrupa por método e conta
+                    # Assumindo coluna 'metodo_automacao'
+                    c_met = None
+                    for c in df_hj.columns:
+                        if c.lower() == "metodo_automacao":
+                            c_met = c
+                            break
+                    if c_met:
+                        cnt = df_hj[c_met].apply(NormalizadorDF.norm_key).value_counts()
+                        contagem_hoje = cnt.to_dict()
+            except Exception:
+                pass
+
         for met, info in ((m, i) for g in mapeamento.values() for m, i in g.items()):
+            path = info.get("path")
             reg = info.get("registro") or {}
+            
+            # 1. Verifica se ativo
             if str(reg.get("status_automacao")).upper() != "ATIVA": continue
-            hors = self._normalizar_horarios(reg.get("horario"))
+            
+            # 2. Verifica Dias da Semana
             dias = self._normalizar_dias_semana(reg.get("dia_semana"))
             if agora.weekday() not in dias: continue
+            
+            # 3. Calcula Esperado até AGORA
+            hors = self._normalizar_horarios(reg.get("horario"))
+            qtd_esperada = 0
+            slots_passados = []
             for hhmm in hors:
                 try:
                     h, m = map(int, hhmm.split(":"))
                     dt_slot = datetime(agora.year, agora.month, agora.day, h, m, 0, tzinfo=self.tz)
-                    if dt_slot < agora and dt_slot.date() == agora.date():
-                        pendencias.append((dt_slot, met, info["path"]))
-                except: continue
-        if not pendencias: return
-        pendencias.sort(key=lambda x: x[0])
-        for dt_slot, metodo, path in pendencias:
-            ctx = {
-                "origem": "agendado_catchup",
-                "justificativa": f"Catchup {dt_slot.strftime('%H:%M')}",
-                "slot_ref": dt_slot,
-                "usuario": f"{getpass.getuser()}@c6bank.com"
-            }
-            try:
-                self.enfileirar_callback(metodo, path, ctx, dt_slot)
-            except: pass
+                    if dt_slot <= agora: # Já deveria ter acontecido
+                        qtd_esperada += 1
+                        slots_passados.append(dt_slot)
+                except:
+                    pass
+            
+            if qtd_esperada == 0:
+                continue
+
+            # 4. Verifica Execuções Reais
+            nk = NormalizadorDF.norm_key(met)
+            qtd_real = contagem_hoje.get(nk, 0)
+            
+            deficit = qtd_esperada - qtd_real
+            
+            if deficit <= 0:
+                continue
+                
+            # TEM DEFICIT -> Tenta recuperar UMA execução agora
+            
+            # 5. Verifica se já está rodando (evita empilhamento)
+            with self.lock:
+                if nk in self._metodos_rodando:
+                    continue # Já rodando, espera terminar para lançar a próxima se ainda houver deficit
+                
+                # 6. Verifica Cooldown (1 minuto após ultima execução)
+                ultimo_fim = self._ultimos_terminos.get(nk)
+            
+            pode_ir = True
+            if ultimo_fim:
+                delta = (agora - ultimo_fim).total_counts() if hasattr(agora - ultimo_fim, "total_counts") else (agora - ultimo_fim).total_seconds()
+                if delta < 60: # Menos de 60 segundos
+                    pode_ir = False
+            
+            if pode_ir:
+                # Escolhe o slot de referência (o mais antigo não executado? ou o mais recente?)
+                # Para log, vamos pegar o último slot que passou e usar como ref
+                # Ou genericamente o agora.
+                slot_ref = slots_passados[-1] if slots_passados else agora
+                
+                ctx = {
+                    "origem": "RECUPERACAO", # CAPS para destaque
+                    "justificativa": f"Deficit: {deficit} (Esp: {qtd_esperada}, Real: {qtd_real})",
+                    "slot_ref": slot_ref,
+                    "usuario": f"{getpass.getuser()}@c6bank.com"
+                }
+                
+                self.logger.info(f"CATCHUP: Lançando {met} | Deficit {deficit} | Espera 1min OK")
+                
+                # Marca como rodando preventivamente (será confirmado no callback de inicio real, mas evita duplo disparo no loop rapido)
+                with self.lock:
+                    self._metodos_rodando.add(nk)
+                    
+                try:
+                    self.enfileirar_callback(met, path, ctx, agora)
+                except:
+                    with self.lock:
+                        self._metodos_rodando.discard(nk)
 
     def _disparar_vencidos(self):
         agora = datetime.now(self.tz)
@@ -468,9 +553,10 @@ class AgendadorMetodos:
             try:
                 agora = datetime.now(self.tz)
                 if agora.date() != self.data_ref: self._reset_diario(agora.date())
-                if not self._catchup_executado:
-                    self._catchup_pendencias(agora)
-                    self._catchup_executado = True
+                if agora.date() != self.data_ref: self._reset_diario(agora.date())
+                
+                # Verifica catchup ciclicamente (a cada loop)
+                self._catchup_pendencias(agora)
                 self._disparar_vencidos()
             except Exception:
                 pass

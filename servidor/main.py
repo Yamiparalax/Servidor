@@ -120,11 +120,13 @@ def main():
     # Callbacks para atualizar interface e agendador
     def cb_exec_inicio(metodo, ctx, inicio):
         logger.info(f"EXEC_INICIO: {metodo}")
+        agendador.registrar_inicio_execucao(metodo)
         if janela_holder["janela"]:
             janela_holder["janela"].marcar_metodo_ocupado(metodo, True)
 
     def cb_exec_fim(metodo, ctx, rc, log_filho):
         logger.info(f"EXEC_FIM: {metodo} rc={rc}")
+        agendador.registrar_fim_execucao(metodo)
         if janela_holder["janela"]:
             janela_holder["janela"].marcar_metodo_ocupado(metodo, False)
         

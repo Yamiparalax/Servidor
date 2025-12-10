@@ -34,13 +34,7 @@ from servidor.config import Config
 from servidor.core import NormalizadorDF
 from servidor.gui.styles import EstilosGUI
 from servidor.gui.components import (
-    CardNetflix,
-    DashboardBox,
-    LogDialog,
-    smart_update_listwidget,
-)
-from servidor.gui.components import (
-    CardNetflix,
+    AutomationCard,
     DashboardBox,
     LogDialog,
     smart_update_listwidget,
@@ -140,8 +134,10 @@ class JanelaServidor(QMainWindow):
         try:
             self.tray_icon = QSystemTrayIcon(self)
             icon = self.windowIcon()
-            if hasattr(icon, "isNull") and icon.isNull():
-                icon = QIcon()
+            # If window icon is null, use a standard icon from style or empty
+            if not icon or icon.isNull():
+                # Tenta usar um icone padrao do sistema ou criar um pixmap colorido
+                icon = self.style().standardIcon(self.style().SP_ComputerIcon)
             self.tray_icon.setIcon(icon)
             self.tray_icon.setToolTip("Servidor Automacoes")
 
@@ -225,9 +221,6 @@ class JanelaServidor(QMainWindow):
             
             if self.monitor_solicitacoes:
                 self.monitor_solicitacoes.parar()
-                
-            if self.monitor_recursos:
-                self.monitor_recursos.parar()
                 
             if self.executor:
                 self.executor.parar_todos_processos()
@@ -739,7 +732,7 @@ class JanelaServidor(QMainWindow):
                 info = itens[met].get("registro") or {}
                 self.infos[met] = info
                 
-                card = CardNetflix(met)
+                card = AutomationCard(met)
                 
                 # Configura callbacks do card
                 try:
@@ -818,7 +811,7 @@ class JanelaServidor(QMainWindow):
 
             prox = self.get_prox_exec(met) if self.get_prox_exec else "-"
             try:
-                card.lbl_proxima.setText(f"PROXIMA EXECUÇÃO: {prox}")
+                card.lbl_proxima.setText(prox)
             except Exception:
                 pass
 
@@ -850,7 +843,7 @@ class JanelaServidor(QMainWindow):
                     if not grupo_valid.empty:
                         ult = grupo_valid.sort_values("dt_full", ascending=False).iloc[0]
                         try:
-                            card.lbl_ultima.setText(f"ULTIMA EXECUÇÃO: {ult['dt_full'].strftime('%d/%m %H:%M')}")
+                            card.lbl_ultima.setText(ult['dt_full'].strftime('%d/%m %H:%M'))
                         except Exception:
                             pass
                         if c_st:
@@ -866,7 +859,7 @@ class JanelaServidor(QMainWindow):
 
             if not ultima_ok:
                 try:
-                    card.lbl_ultima.setText("ULTIMA EXECUÇÃO: -")
+                    card.lbl_ultima.setText("-")
                 except Exception:
                     pass
 
