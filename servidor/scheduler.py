@@ -183,14 +183,17 @@ class SincronizadorPlanilhas:
         try:
             if not getattr(self.cliente_bq, "offline", False) and getattr(self.cliente_bq, "client", None):
                 try:
+                    self.logger.info("Iniciando download BQ para arquivos locais...")
                     df_e = self.cliente_bq.query_df(f"SELECT * FROM `{Config.TBL_AUTOMACOES_EXEC}`")
                     df_e = df_e.astype(str)
                     df_e.to_excel(Config.ARQ_XLSX_AUTEXEC, index=False)
+                    
                     df_r = self.cliente_bq.query_df(f"SELECT * FROM `{Config.TBL_REGISTRO_AUTOMACOES}`")
                     df_r = df_r.astype(str)
                     df_r.to_excel(Config.ARQ_XLSX_REG, index=False)
-                except Exception:
-                    pass
+                    self.logger.info("Download BQ concluído com sucesso.")
+                except Exception as e:
+                    self.logger.error("FALHA AO BAIXAR DO BQ (Usando cache local): %s", e)
             try:
                 if not Config.ARQ_XLSX_AUTEXEC.exists() or not Config.ARQ_XLSX_REG.exists():
                     return False

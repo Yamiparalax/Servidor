@@ -86,13 +86,10 @@ class JanelaServidor(QMainWindow):
         self._busca_texto = ""
         self._busca_ativa = False
         self._tab_antes_busca = None
-
-        self.navegacao_indices = {}
-        self.card_secao = {}
-        self._busca_texto = ""
-        self._busca_ativa = False
-        self._tab_antes_busca = None
         
+        # Controle de Virada de Dia (Midnight Reset)
+        self.data_atual_gui = datetime.now(Config.TZ).date()
+
         self._ultima_atualizacao_planilhas = None
         self._proxima_atualizacao_planilhas = None
 
@@ -1096,6 +1093,39 @@ class JanelaServidor(QMainWindow):
 
     def _tick_gui(self):
         try:
+            # --- Check de Virada de Dia (Midnight Reset) ---
+            hoje_atual = datetime.now(Config.TZ).date()
+            if hasattr(self, "data_atual_gui") and hoje_atual != self.data_atual_gui:
+                self.logger.info("VIRADA DE DIA DETECTADA (GUI): %s -> %s. Resetando visualização.", self.data_atual_gui, hoje_atual)
+                self.data_atual_gui = hoje_atual
+                
+                # Reseta listas locais
+                self._resumo_sucesso = []
+                self._resumo_falhas = []
+                self._resumo_outros = []
+                
+                # Limpa DF de execucoes da GUI para não mostrar dados de ontem enquanto não sincroniza
+                # (Opcional: ou filtra). Vamos filtrar para garantir limpeza visual imediata
+                if not self.df_exec.empty and "dt_full" in self.df_exec.columns:
+                     # Mantem apenas o que for >= hoje (provavelmente nada se acabou de virar)
+                     try:
+                         # self.df_exec = self.df_exec[self.df_exec["dt_full"].dt.date == hoje_atual].copy() 
+                         # Melhor: Não alterar o DF global sem sync, mas limpar as listas
+                         pass
+                     except:
+                         pass
+
+                # Limpa Listas de Monitor (DashboardBoxes)
+                for box in self.dashboard_boxes.values():
+                    try:
+                        box.lista.clear()
+                    except:
+                        pass
+                
+                # Forca atualizacao para baixar planilhas do novo dia (que estarao vazias ou com novos agendamentos)
+                self.logger.info("Forçando sincronização pós-virada...")
+                self._forcar_update()
+            
             self._preencher_cards()
         except Exception:
             pass
