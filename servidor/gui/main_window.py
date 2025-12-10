@@ -752,8 +752,6 @@ class JanelaServidor(QMainWindow):
         try:
             # Tenta selecionar a primeira categoria encontrada, se houver, senao Monitor
             if len(categorias) > 0:
-            # Tenta selecionar a primeira categoria encontrada, se houver, senao Monitor
-            if len(categorias) > 0:
                 # 0=Monitor, 1=Recursos, 2=Primeira Categoria...
                 self.nav_list.setCurrentRow(2) 
             else:
