@@ -280,39 +280,7 @@ class JanelaServidor(QMainWindow):
         self.lbl_status.setObjectName("statusLabel")
         self.lbl_status.setStyleSheet(f"font-weight: 800; color: {p['aviso']};")
         
-        # Resources (CPU, RAM, SWAP) moved to top
-        
-        def mk_mini_bar(lbl):
-            w = QWidget()
-            l = QHBoxLayout(w)
-            l.setContentsMargins(0,0,0,0)
-            l.setSpacing(5)
-            
-            lb = QLabel(lbl)
-            lb.setStyleSheet(f"color: {p['texto_sec']}; font-size: 10px; font-weight: 700;")
-            
-            b = QProgressBar()
-            b.setRange(0, 100)
-            b.setFixedSize(60, 8)
-            b.setTextVisible(False)
-            b.setStyleSheet(f"""
-                QProgressBar {{
-                    background-color: {p['bg_card']};
-                    border-radius: 4px;
-                }}
-                QProgressBar::chunk {{
-                    background-color: {p['destaque']};
-                    border-radius: 4px;
-                }}
-            """)
-            
-            l.addWidget(lb)
-            l.addWidget(b)
-            return w, b, lb
-
-        w_cpu, self.cpu_bar, self.cpu_lbl = mk_mini_bar("CPU")
-        w_ram, self.ram_bar, self.ram_lbl = mk_mini_bar("RAM")
-        w_swp, self.swap_bar, self.swap_lbl = mk_mini_bar("SWAP")
+        # Resources (CPU, RAM, SWAP) removed as requested
 
         # Search Input
         self.input_busca = self._criar_input_busca()
@@ -337,19 +305,9 @@ class JanelaServidor(QMainWindow):
         except Exception:
             pass
 
-        # Weather/Currency buttons removed from top bar
-
         # Layout Assembly
         topo.addWidget(self.lbl_status)
-        topo.addSpacing(20)
-        topo.addWidget(w_cpu)
-        topo.addWidget(w_ram)
-        topo.addWidget(w_swp)
-        topo.addSpacing(20)
-        topo.addSpacing(20)
-        # Widget de Clima FIXO (REMOVIDO)
-        
-        topo.addStretch(1)
+        topo.addStretch(1) # Empurra o resto para a direita
         topo.addWidget(self.input_busca)
         topo.addSpacing(10)
         topo.addWidget(self.btn_auto_sync)
@@ -615,6 +573,7 @@ class JanelaServidor(QMainWindow):
         self.cards.clear()
         self.infos.clear()
         self.dashboard_boxes.clear()
+        self.layouts_categorias = {}
 
         try:
             self.nav_list.clear()
@@ -645,6 +604,13 @@ class JanelaServidor(QMainWindow):
         # Cria as 5 colunas
         self.dashboard_boxes["pendentes"] = DashboardBox("A RODAR HOJE", p["amarelo"])
         self.dashboard_boxes["rodando"] = DashboardBox("RODANDO AGORA", p["azul"])
+        
+        # Conecta duplo clique na lista de rodando para parar
+        try:
+            self.dashboard_boxes["rodando"].lista.itemDoubleClicked.connect(self._acao_parar_duplo_clique_lista)
+        except Exception:
+            pass
+
         self.dashboard_boxes["sucesso"] = DashboardBox("SUCESSO HOJE", p["sucesso"])
         self.dashboard_boxes["falhas"] = DashboardBox("FALHAS / ATENÇÃO", p["destaque"])
         self.dashboard_boxes["outros"] = DashboardBox("OUTROS STATUS", p["texto_sec"])
@@ -722,6 +688,7 @@ class JanelaServidor(QMainWindow):
             cards_container = QWidget()
             grid_cards = QGridLayout(cards_container)
             grid_cards.setSpacing(20)
+            self.layouts_categorias[str(cat).lower()] = grid_cards # Store grid_cards for later restoration
             
             itens = self.mapeamento[cat]
             col = 0
@@ -958,42 +925,8 @@ class JanelaServidor(QMainWindow):
             except Exception as e:
                 self._append_log(f"Falha ao enfileirar {metodo}: {e}")
 
-    def _acao_parar(self, met):
-        try:
-            if QMessageBox.question(self, "Parar", f"Parar {met}?", QMessageBox.Yes | QMessageBox.No) == QMessageBox.Yes:
-                self.executor.parar_processo(met)
-        except Exception:
-            try:
-                self.executor.parar_processo(met)
-            except Exception:
-                pass
-
-    def _acao_parar_duplo_clique(self, met):
-        try:
-            execs = self.executor.snapshot_execucao()
-            if met not in execs:
-                return
-        except Exception:
-            return
-
-        try:
-            msg = QMessageBox(self)
-            msg.setWindowTitle("PARAR EXECUÇÃO")
-            msg.setText(f"DESEJA ENCERRAR EXECUÇÃO DO METODO {met}?")
-            msg.setStyleSheet(EstilosGUI.estilo_janela())
-            
-            btn_sim = msg.addButton("SIM, PROSSEGUIR", QMessageBox.YesRole)
-            btn_nao = msg.addButton("NÃO, CANCELAR", QMessageBox.NoRole)
-            
-            msg.exec()
-            
-            if msg.clickedButton() == btn_sim:
-                self.executor.parar_processo(met)
-        except Exception:
-            try:
-                self.executor.parar_processo(met)
-            except Exception:
-                pass
+    # Antigos metodos removidos em favor dos novos implementados no final
+    # (Mantendo apenas o que nao for duplicado)
 
     # --- LÓGICA DE BUSCA GLOBAL ---
     def _on_busca_text_changed(self, texto):
@@ -1024,61 +957,101 @@ class JanelaServidor(QMainWindow):
             self._aplicar_busca_cards_global()
 
     def _restaurar_cards_posicao_original(self):
-        # Percorre por categoria para manter organização
-        for secao, info in self.card_secao.items():
-            layout = info["layout"]
-            
-            # Coleta cards dessa secao
-            cards_secao = []
-            if secao in self.mapeamento:
-                for m in self.mapeamento[secao].keys():
-                    if m in self.cards:
-                         cards_secao.append( (m, self.cards[m]) )
-            
-            # Ordena alfabeticamente
-            cards_secao.sort(key=lambda x: x[0])
-            
-            # Reinsere no Grid
-            MAX_COLS = 3
-            for idx, (m, c) in enumerate(cards_secao):
-               # Remove do parent atual (busca ou nenhum)
-               c.setParent(None)
-               
-               row = idx // MAX_COLS
-               col = idx % MAX_COLS
-               layout.addWidget(c, row, col)
-               c.setVisible(True)
-
-    def _aplicar_busca_cards_global(self):
-        termo = self._busca_texto.lower().strip()
+        # Itera sobre os métodos e restaura para seus layouts originais
+        # Precisamos saber qual layout pertence a qual metodo.
+        # self.card_secao[met] = nome_categoria_lower
+        # self.layouts_categorias[nome_categoria_lower] = QGridLayout
         
-        # Remove todos os widgets do layout de busca
-        # (Isso não deleta o objeto card, apenas tira do layout)
+        # Agrupar metodos por categoria para reinserir em ordem (opcional, mas bom)
+        
+        # Limpa o grid de busca primeiro (sem deletar os cards, apenas remove)
         while self.gb_busca.count():
             item = self.gb_busca.takeAt(0)
             if item.widget():
-                item.widget().setParent(None)
+                item.widget().setParent(None) # Desacopla
+                
+        # Recoloca nos layouts originais
+        # Para manter a ordem visual, o ideal seria reconstruir ou apenas re-adicionar na ordem.
+        # Como o gridLayout preenche row/col, vamos apenas re-adicionar sequencialmente.
         
-        if not termo:
+        # Zerar contadores dos grids originais?
+        # A forma mais segura é: limpar todos os grids de categoria e repopular.
+        
+        # 1. Limpa grids de categoria
+        if not hasattr(self, "layouts_categorias"):
             return
 
-        matches = []
-        for met, card in self.cards.items():
-            # Verifica texto
-            txt = f"{met} {card.lbl_status.text()}".lower()
-            if termo in txt:
-                matches.append((met, card))
-        
-        # Ordena matches
-        matches.sort(key=lambda x: x[0])
-        
-        # Adiciona ao grid de busca
+        for cat_lower, grid in self.layouts_categorias.items():
+            # Remove tudo do grid
+            while grid.count():
+                item = grid.takeAt(0)
+                if item.widget():
+                    item.widget().setParent(None)
+                    
+        # 2. Repopula
+        # Precisamos da ordem original. self.mapeamento tem a estrutura.
         MAX_COLS = 3
-        for idx, (m, card) in enumerate(matches):
-             row = idx // MAX_COLS
-             col = idx % MAX_COLS
-             self.gb_busca.addWidget(card, row, col)
-             card.setVisible(True)
+        
+        for cat, itens in self.mapeamento.items():
+            cat_lower = str(cat).lower()
+            grid = self.layouts_categorias.get(cat_lower)
+            if not grid:
+                continue
+                
+            row, col = 0, 0
+            for met in sorted(itens.keys()):
+                if met in self.cards:
+                    card = self.cards[met]
+                    card.setVisible(True) # Garante visivel
+                    grid.addWidget(card, row, col)
+                    col += 1
+                    if col >= MAX_COLS:
+                        col = 0
+                        row += 1
+
+    def _aplicar_busca_cards_global(self):
+        texto = self._busca_texto
+        if not texto:
+            return
+
+        # Remove cards de seus layouts atuais e joga no grid de busca se der match
+        
+        c = 0
+        r = 0
+        MAX_COLS_BUSCA = 4
+        
+        # Limpa grid de busca antes de popular
+        while self.gb_busca.count():
+            it = self.gb_busca.takeAt(0)
+            if it.widget():
+                it.widget().setParent(None)
+
+        for met, card in self.cards.items():
+            # Match?
+            # card.lbl_status_chip (ANTIGO lbl_status)
+            try:
+                st_text = card.lbl_status_chip.text()
+            except:
+                st_text = ""
+                
+            txt = f"{met} {st_text}".lower()
+            if texto in txt:
+                # Match! Move para gb_busca
+                self.gb_busca.addWidget(card, r, c)
+                card.setVisible(True)
+                c += 1
+                if c >= MAX_COLS_BUSCA:
+                    c = 0
+                    r += 1
+            else:
+                # Se nao match, o card fica "sem pai" ou invisivel?
+                # Melhor esconder ou deixar quieto.
+                # Como movemos apenas os que dão match, os outros ficam onde estão?
+                # NAO, porque se mudarmos de aba, o layout original vai estar "furado" ou duplicado.
+                # O ideal na busca é roubar TODOS os cards ou apenas os visiveis.
+                # Simplificação: O search "rouba" o card. Se sair do search, chamamos restaurar.
+                # Então, aqui, se não der match, garantimos que ele não está no grid de busca.
+                pass
 
     def _achar_ultimo_log_metodo(self, met):
         try:
@@ -1277,3 +1250,53 @@ class JanelaServidor(QMainWindow):
             dlg.exec()
         except Exception:
             pass
+    def _acao_parar_duplo_clique(self, met):
+        self._acao_parar(met)
+
+    def _acao_parar_duplo_clique_lista(self, item):
+        if not item:
+            return
+        # O texto geralmente é "METODO (Iniciado ha X)" ou apenas "METODO"
+        # Vamos tentar extrair o nome do metodo.
+        texto = item.text()
+        # Assumindo que o nome do metodo é a primeira parte antes de qualquer " ("
+        # Ou se for formatado diferente, ajustamos. 
+        # No _atualizar_monitor (vermelho/azul), geralmente inserimos o nome puro ou com detalhes.
+        # Vamos pegar a primeira palavra ou limpar.
+        
+        # Estrategia: tentar casar com chaves de self.mapeamento (lower)
+        # removemos parenteses de tempo se houver
+        provavel_nome = texto.split("(")[0].strip()
+        
+        # Verifica se existe no mapeamento (case insensitive)
+        met_alvo = None
+        for cat, dic in self.mapeamento.items():
+            for m in dic.keys():
+                if m.lower() == provavel_nome.lower():
+                    met_alvo = m
+                    break
+            if met_alvo:
+                break
+        
+        if met_alvo:
+            self._acao_parar(met_alvo)
+        else:
+            # Fallback: tenta parar pelo texto cru se for um nome valido
+            self._acao_parar(provavel_nome)
+
+    def _acao_parar(self, met):
+        msg = QMessageBox(self)
+        msg.setWindowTitle("PARAR EXECUÇÃO")
+        msg.setText(f"Deseja interromper a execução de:\n\n{met}?")
+        msg.setStyleSheet(EstilosGUI.estilo_janela())
+        btn_sim = msg.addButton("SIM, PARAR", QMessageBox.YesRole)
+        btn_nao = msg.addButton("NÃO", QMessageBox.NoRole)
+        msg.exec()
+        
+        if msg.clickedButton() == btn_sim:
+            try:
+                self.executor.parar_processo(met)
+                self.logger.info("GUI: Solicitado parada forçada de %s", met)
+                # O feedback visual virá na proxima atualização
+            except Exception as e:
+                QMessageBox.warning(self, "Erro", f"Erro ao parar: {e}")
