@@ -60,7 +60,7 @@ from servidor.main import main
 # Configuração de modo offline
 # True: Usa arquivos locais (Excel)
 # False: Tenta conectar ao BigQuery/SharePoint
-SERVIDOR_OFFLINE = False
+SERVIDOR_OFFLINE = True
 
 if __name__ == "__main__":
     # Injeta configuração correta

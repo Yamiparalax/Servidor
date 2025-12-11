@@ -82,14 +82,14 @@ class JanelaServidor(QMainWindow):
         self.log_painel = None
         self.btn_parar_rodando = None
         self.chk_auto_sync = None
-        # self.input_busca = None # REMOVIDO
+        self.input_busca = None 
         self.nav_list = None
         self.stack = None
         self.navegacao_indices = {}
         self.card_secao = {}
-        # self._busca_texto = "" # REMOVIDO
-        # self._busca_ativa = False # REMOVIDO
-        # self._tab_antes_busca = None # REMOVIDO
+        self._busca_texto = ""
+        self._busca_ativa = False
+        self._tab_antes_busca = None
         
         # Controle de Virada de Dia (Midnight Reset)
         self.data_atual_gui = datetime.now(Config.TZ).date()
