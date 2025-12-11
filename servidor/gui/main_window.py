@@ -1109,14 +1109,36 @@ class JanelaServidor(QMainWindow):
         except Exception:
             pass
 
+        # --- Polling de Sincronização (Pull safe da threads) ---
         try:
-            u = getattr(self.sincronizador, "ultima_execucao", None)
+            # Verifica se o timestamp de atualização do sincronizador mudou
+            sync_ts = getattr(self.sincronizador, "ultima_execucao", None)
+            
+            # Se mudou em relação ao que temos cacheado na GUI
+            if sync_ts and sync_ts != self._ultima_atualizacao_planilhas:
+                # Puxa os dados para a thread principal (GUI)
+                # Como self.sincronizador.df_exec é thread-safe (lockado na escrita), leitura é tranquila em Python (GIL ajuda, mas copy é bom)
+                # O Sincronizador usa lock na escrita, aqui lemos a referencia.
+                
+                # Atualiza referências locais
+                self._ultima_atualizacao_planilhas = sync_ts
+                self._proxima_atualizacao_planilhas = getattr(self.sincronizador, "proxima_execucao", None)
+                
+                df_e = getattr(self.sincronizador, "df_exec", pd.DataFrame())
+                df_r = getattr(self.sincronizador, "df_reg", pd.DataFrame())
+                
+                # Chama atualização da GUI (agora estamos na thread da GUI, pois timer_gui rodou aqui)
+                self.atualizar_dados(df_e, df_r)
+                
+            # Atualiza status visual de data/hora (label) mesmo se nao mudou dados (para contagem regressiva se tiver)
+            u = self._ultima_atualizacao_planilhas
             p = getattr(self.sincronizador, "proxima_execucao", None)
             if u or p:
                 self.atualizar_status_planilhas(u, p)
-        except Exception:
+                
+        except Exception as e:
+            # self.logger.error(f"Erro no polling da GUI: {e}") # Debug only
             pass
-
 
         try:
             execs = self.executor.snapshot_execucao()

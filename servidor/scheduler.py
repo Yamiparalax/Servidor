@@ -209,11 +209,11 @@ class SincronizadorPlanilhas:
                     self.df_reg = df_reg
                 self.ultima_execucao = datetime.now(Config.TZ)
                 self.proxima_execucao = self.ultima_execucao + timedelta(seconds=self.intervalo_segundos)
-                if self.callback_atualizacao:
-                    try:
-                        self.callback_atualizacao(self.df_exec, self.df_reg)
-                    except Exception:
-                        pass
+                # if self.callback_atualizacao:
+                #    try:
+                #        self.callback_atualizacao(self.df_exec, self.df_reg)
+                #    except Exception:
+                #        pass
                 return True
             except Exception:
                 return False
