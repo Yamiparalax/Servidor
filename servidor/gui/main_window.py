@@ -1259,7 +1259,7 @@ class JanelaServidor(QMainWindow):
         except Exception:
             pass
 
-    @Slot(str, bool)
+    @pyqtSlot(str, bool)
     def _slot_marcar_ocupado(self, met, ocupado):
         try:
             card = self.cards.get(met)
@@ -1267,6 +1267,7 @@ class JanelaServidor(QMainWindow):
                 return
             
             # Evita repintar se já estiver no estado desejado
+            # (Código omitido... segue normal)
             estado_atual_rodando = (card.lbl_status_badge.text().startswith("RODANDO") or not card.btn_executar.isEnabled())
             if ocupado and estado_atual_rodando:
                 return
@@ -1292,7 +1293,7 @@ class JanelaServidor(QMainWindow):
         except Exception:
             pass
 
-    @Slot(str)
+    @pyqtSlot(str)
     def _append_log(self, msg):
         try:
             if not self.log_painel:
