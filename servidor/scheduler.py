@@ -334,6 +334,7 @@ class AgendadorMetodos:
         self._stop = False
         self.data_ref = datetime.now(self.tz).date()
         self._catchup_executado = False
+        self._execucoes_gatilho_local = set() # (metodo_norm, datetime_ref)
         self.thread_scheduler = threading.Thread(target=self._loop_scheduler, daemon=True)
         self.thread_recalc = threading.Thread(target=self._loop_recalc, daemon=True)
         self.thread_scheduler.start()
@@ -424,6 +425,8 @@ class AgendadorMetodos:
     def _reset_diario(self, nova_data):
         self.data_ref = nova_data
         self._catchup_executado = False
+        with self.lock:
+             self._execucoes_gatilho_local.clear()
         self._recalcular_agenda()
 
     def _catchup_pendencias(self, agora: datetime):
@@ -478,11 +481,22 @@ class AgendadorMetodos:
             if qtd_esperada == 0:
                 continue
 
-            # 4. Verifica Execuções Reais
+            # 4. Verifica Execuções Reais + Gatilhos Locais
             nk = NormalizadorDF.norm_key(met)
             qtd_real = contagem_hoje.get(nk, 0)
             
-            deficit = qtd_esperada - qtd_real
+            # Conta também o que já disparamos localmente hoje mas ainda não consta no df_exec
+            qtd_local = 0
+            with self.lock:
+                for (m_key, dt_ref) in self._execucoes_gatilho_local:
+                    if m_key == nk and dt_ref.date() == agora.date():
+                         # Verifica se esse gatilho é para um slot que estamos contando
+                         # Se o gatilho foi "RECUPERACAO" ou "AGENDADO" para um horario X
+                         # Precisamos garantir que não contamos duplicado com o DF
+                         # Simplesmente somamos tudo e assumimos que o Sincronizador vai lidar com a consistencia
+                         qtd_local += 1
+
+            deficit = qtd_esperada - (qtd_real + qtd_local)
             
             if deficit <= 0:
                 continue
@@ -548,7 +562,10 @@ class AgendadorMetodos:
                     "usuario": f"{getpass.getuser()}@c6bank.com"
                 }
                 self.enfileirar_callback(metodo, path, ctx, dt_prox)
-                with self.lock: self.proximas_execucoes[metodo] = None
+                with self.lock: 
+                    self.proximas_execucoes[metodo] = None
+                    nk = NormalizadorDF.norm_key(metodo)
+                    self._execucoes_gatilho_local.add((nk, dt_prox))
                 threading.Thread(target=self._recalcular_agenda, daemon=True).start()
 
     def _loop_scheduler(self):

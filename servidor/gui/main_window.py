@@ -78,14 +78,17 @@ class JanelaServidor(QMainWindow):
         self.log_painel = None
         self.btn_parar_rodando = None
         self.chk_auto_sync = None
-        self.input_busca = None
+        self.log_painel = None
+        self.btn_parar_rodando = None
+        self.chk_auto_sync = None
+        # self.input_busca = None # REMOVIDO
         self.nav_list = None
         self.stack = None
         self.navegacao_indices = {}
         self.card_secao = {}
-        self._busca_texto = ""
-        self._busca_ativa = False
-        self._tab_antes_busca = None
+        # self._busca_texto = "" # REMOVIDO
+        # self._busca_ativa = False # REMOVIDO
+        # self._tab_antes_busca = None # REMOVIDO
         
         # Controle de Virada de Dia (Midnight Reset)
         self.data_atual_gui = datetime.now(Config.TZ).date()
@@ -305,31 +308,12 @@ class JanelaServidor(QMainWindow):
         # Layout Assembly
         topo.addWidget(self.lbl_status)
         topo.addStretch(1) # Empurra o resto para a direita
-        topo.addWidget(self.input_busca)
         topo.addSpacing(10)
         topo.addWidget(self.btn_auto_sync)
         topo.addSpacing(10)
         topo.addWidget(self.btn_force)
         
         return topo
-
-    def _criar_input_busca(self):
-        p = EstilosGUI.obter_paleta()
-        barra = QLineEdit()
-        barra.setPlaceholderText("Buscar...")
-        try:
-            barra.setClearButtonEnabled(True)  # type: ignore[attr-defined]
-        except Exception:
-            pass
-        barra.setFixedWidth(280)
-        barra.setStyleSheet(
-            f"QLineEdit {{ background-color: {p['bg_card']}; border: 1px solid {p['borda_suave']}; border-radius: 12px; padding: 10px; color: {p['branco']}; }}"
-        )
-        try:
-            barra.textChanged.connect(self._on_busca_text_changed)
-        except Exception:
-            pass
-        return barra
 
     def _on_secao_alterada(self, row):
         try:
@@ -486,9 +470,6 @@ class JanelaServidor(QMainWindow):
         p = self._proxima_atualizacao_planilhas
         if u or p:
             self.atualizar_status_planilhas(u, p)
-
-        if self._busca_ativa:
-             self._aplicar_busca_cards_global()
 
     def atualizar_mapeamento_threadsafe(self, e, r):
         try:
