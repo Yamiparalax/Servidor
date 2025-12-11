@@ -15,7 +15,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 from win32com.client import Dispatch
-from google.cloud import bigquery
+from win32com.client import Dispatch
+import pandas_gbq
+from google.oauth2 import service_account
+import pandas as pd
 
 # --- CONFIGURAÇÕES GERAIS ---
 BASE_DIR = Path.home() / "C6 CTVM LTDA, BANCO C6 S.A. e C6 HOLDING S.A" / "Mensageria e Cargas Operacionais - 11.CelulaPython" / "graciliano" / "novo_servidor"
@@ -97,13 +100,15 @@ def _find_bq_cred_json() -> Optional[Path]:
             return p
     return None
 
-def _get_bq_client() -> bigquery.Client:
-    """Retorna cliente autenticado do BigQuery."""
-    cred = _find_bq_cred_json()
-    if cred and not os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"):
-        os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = str(cred)
-    
-    return bigquery.Client(project="datalab-pagamentos")
+def _get_bq_credentials():
+    """Retorna credenciais de Service Account ou None."""
+    cred_file = _find_bq_cred_json()
+    if cred_file:
+        try:
+            return service_account.Credentials.from_service_account_file(str(cred_file))
+        except Exception:
+            pass
+    return None
 
 def _read_log_full(log_path: Optional[str], log_text: Optional[str]) -> str:
     """Lê o log de arquivo ou retorna o texto passado, com limite de caracteres."""
@@ -302,15 +307,27 @@ class AutomacoesExecClient:
                 "observacao": None
             }
 
-            # 3. Inserção no BigQuery (Sem Lock para concorrência)
-            # with FileLock(LOCK_FILE, timeout_s=lock_timeout_s):
+            # 3. Inserção no BigQuery (Via pandas_gbq - STRICT REST)
             try:
-                client = _get_bq_client()
-                errors = client.insert_rows_json(TABLE_ID, [rec], row_ids=[None])
-                if errors:
-                    raise RuntimeError(f"BQ Insert Errors: {json.dumps(errors, ensure_ascii=False)}")
+                creds = _get_bq_credentials()
+                df_metric = pd.DataFrame([rec])
+                
+                # Tratamento de tipos para garantir compatibilidade com o schema BQ
+                # Converter datetimes para str se necessário ou deixar pandas_gbq lidar
+                # Mas para segurança, timestamps devem estar ok.
+                
+                pandas_gbq.to_gbq(
+                    df_metric, 
+                    TABLE_ID, 
+                    project_id="datalab-pagamentos", 
+                    if_exists="append",
+                    credentials=creds,
+                    api_method="load_csv" # Força load_csv ou load_parquet (REST) ao invés de streaming buffer se preferir, mas 'load_csv' é safe.
+                    # api_method default costuma ser load_parquet ou load_csv. Evita Storage Write API se configurado globalmente ou por falta de lib.
+                )
             except Exception as e_bq:
-                raise e_bq
+                # Log e re-raise
+                raise RuntimeError(f"Falha pandas_gbq: {e_bq}")
 
             self.logger.info(f"SUCESSO BQ app={SCRIPT_NAME} status={st}")
 

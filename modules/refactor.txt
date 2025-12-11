@@ -132,7 +132,17 @@ Implemente uma classe `Execucao` que detecta o ambiente.
 
 ---
 
-# 7. ESTRUTURA GERAL DO CÓDIGO
+# 7. REGRAS ESTRITAS DE BIGQUERY (REST / PANDAS_GBQ)
+
+* **PROIBIDO** usar `google-cloud-bigquery-storage` (Storage API). Você **NÃO** tem acesso.
+* **PROIBIDO** usar `google.cloud.bigquery.Client` diretamente se puder evitar.
+* **OBRIGATÓRIO** usar `pandas_gbq` para leitura e escrita sempre que houver DataFrames envolvidos.
+* **OBRIGATÓRIO** passar flag `use_bqstorage_api=False` em `read_gbq` para forçar REST API.
+* **AUTENTICAÇÃO** deve ser via `pydata_google_auth` ou Service Account padrão, mas sempre via protocolo REST.
+
+---
+
+# 8. ESTRUTURA GERAL DO CÓDIGO
 
 1.  **Imports** (Padrão + `_utilAutomacoesExec`)
 2.  **Configuração de Logs** (Console + Arquivo espelho)
