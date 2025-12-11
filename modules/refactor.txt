@@ -6,12 +6,20 @@ OBJETIVO PRINCIPAL: Padronizar o script para execução no servidor "Novo Servid
 
 ---
 
+# 0. VARIÁVEIS GLOBAIS OBRIGATÓRIAS
+
+No início do script (logo após imports), defina:
+```python
+REGRAVEL_EXCEL = True   # Se True, re-salva arquivo Excel via COM antes de ler
+SUBIDA_BQ = "append"    # ou "replace". PRESERVE o comportamento original do script.
+```
+
 # 1. DIRETRIZES DE NEGÓCIO E PRESERVAÇÃO (CRÍTICO)
 
 * **LÓGICA IMUTÁVEL:** NÃO ALTERE a lógica de negócio (regras, cálculos, filtros de DataFrames). O resultado final dos dados deve ser idêntico.
 * **IDIOMA:** Todo o código (variáveis, funções, comentários e logs) deve estar em **PORTUGUÊS (PT-BR)**.
-* **COMENTÁRIOS:** Apenas comentários úteis e profissionais. **PROIBIDO** usar caracteres decorativos como `# =====`, `# -----`, `// *****`.
-* **STATUS DE EMAIL:** O assunto deve seguir o padrão estrito:
+* **COMENTÁRIOS:** Apenas comentários úteis e profissionais. **PROIBIDO** usar caracteres decorativos como `# =====`.
+* **STATUS DE EMAIL:** O assunto deve seguir o padrão estrito (SEM TIMESTAMP):
   `CÉLULA PYTHON MONITORAÇÃO - {NOME_SCRIPT} - {STATUS}`
   Onde `{STATUS}` deve ser **SUCESSO**, **FALHA** ou **SEM DADOS PARA PROCESSAR**.
 * **ANEXOS:** O email deve sempre conter um arquivo `.zip` nomeado como `{NOME_SCRIPT}_{TIMESTAMP}.zip` contendo o log completo da execução (espelho do console) e quaisquer outros arquivos gerados.
@@ -24,6 +32,22 @@ OBJETIVO PRINCIPAL: Padronizar o script para execução no servidor "Novo Servid
 * **CAMINHO DE LOGS/HISTÓRICO:**
   `Path.home() / "C6 CTVM LTDA, BANCO C6 S.A. e C6 HOLDING S.A" / "Mensageria e Cargas Operacionais - 11.CelulaPython" / "graciliano" / "automacoes" / NOME_AUTOMACAO / "logs" / NOME_SCRIPT / YYYY-MM-DD`
 * **NOMES DE VARIÁVEIS:** Padronize `NOME_SERVIDOR` e `NOME_SCRIPT` (sempre upper case).
+
+## 2.1. TRATAMENTO DE EXCEL (REGRAVEL_EXCEL)
+Se `REGRAVEL_EXCEL = True` e a entrada for `.xlsx/.xls`, você DEVE usar `win32com` para abrir e salvar o arquivo antes de ler com pandas (para resolver problemas de formatação/corrupção).
+```python
+if REGRAVEL_EXCEL:
+    try:
+        import win32com.client as win32
+        xl = win32.Dispatch("Excel.Application")
+        xl.DisplayAlerts = False
+        wb = xl.Workbooks.Open(str(caminho_arquivo))
+        wb.Save()
+        wb.Close()
+    except Exception as e:
+        logger.warning(f"Falha ao regravar Excel: {e}")
+```
+Mantenha o layout e dados ORIGINAIS.
 
 ---
 

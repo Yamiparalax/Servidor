@@ -261,7 +261,8 @@ class AutomacoesExecClient:
         destinatarios: Optional[List[str]] = None, 
         send_email: bool = True, 
         lock_timeout_s: int = 60,
-        anexos: Optional[List[Any]] = None  # <--- ADICIONADO: Parâmetro para receber lista de arquivos
+        anexos: Optional[List[Any]] = None,  # <--- ADICIONADO: Parâmetro para receber lista de arquivos
+        metricas: Optional[Dict[str, Any]] = None # <--- ADICIONADO: Metricas para corpo do email (lidas, inseridas etc)
     ) -> Dict[str, Any]:
         
         # --- INTEGRAÇÃO SERVIDOR: Verifica variaveis de ambiente ---
@@ -339,7 +340,8 @@ class AutomacoesExecClient:
                     st, metodo_automacao, nome_automacao, tempo_exec, 
                     dstr, hstr, usr, tabela_referencia, observacao, 
                     destinatarios, log_path, host, 
-                    anexos_extras=anexos  # <--- PASSANDO OS ANEXOS EXTRAS
+                    anexos_extras=anexos,  # <--- PASSANDO OS ANEXOS EXTRAS
+                    metricas=metricas # <--- PASSANDO METRICAS
                 )
 
             dur = round((_now_sp() - inicio).total_seconds(), 3)
@@ -360,13 +362,21 @@ class AutomacoesExecClient:
             
             return {"ok": False, "status": "FALHA", "erro": err_msg}
 
-    def _enviar_email_sucesso(self, st, metodo, nome, tempo, dstr, hstr, usr, tab_ref, obs, dest, log_path, host, anexos_extras=None):
+    def _enviar_email_sucesso(self, st, metodo, nome, tempo, dstr, hstr, usr, tab_ref, obs, dest, log_path, host, anexos_extras=None, metricas=None):
         try:
             mailer = OutlookMailer(self.logger).ensure()
             if not mailer.app: return
 
-            subj = f"Célula Python - {metodo} - {st} - {dstr} {hstr}"
+            subj = f"CÉLULA PYTHON MONITORAÇÃO - {str(metodo).upper()} - {st}"
             
+            # Monta bloco de métricas se houver
+            bloco_metricas = ""
+            if metricas and isinstance(metricas, dict):
+                bloco_metricas = "<h3>Métricas</h3><ul>"
+                for k, v in metricas.items():
+                    bloco_metricas += f"<li><strong>{k}:</strong> {v}</li>"
+                bloco_metricas += "</ul>"
+
             # Monta corpo do email em HTML
             body = (
                 f"<html><body>"
@@ -375,6 +385,7 @@ class AutomacoesExecClient:
                 f"<p><strong>METODO:</strong> {metodo}</p>"
                 f"<p><strong>TEMPO EXEC:</strong> {tempo}</p>"
                 f"<p><strong>DATA:</strong> {dstr} {hstr}</p>"
+                f"{bloco_metricas}"
                 f"</body></html>"
             )
             
@@ -395,7 +406,7 @@ class AutomacoesExecClient:
             hstr = _fmt_time(_now_sp())
             usr = _guess_usuario_email(usuario)
             
-            subj = f"Célula Python - {metodo} - FALHA CRÍTICA - {dstr} {hstr}"
+            subj = f"CÉLULA PYTHON MONITORAÇÃO - {str(metodo).upper()} - FALHA CRÍTICA"
             body = (
                 f"<html><body>"
                 f"<h2>FALHA NA EXECUÇÃO</h2>"
