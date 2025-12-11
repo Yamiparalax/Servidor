@@ -456,17 +456,10 @@ class JanelaServidor(QMainWindow):
         self._recalcular_resumos_execucao()
 
         if mudou or vazio:
-            try:
-                QTimer.singleShot(0, self._reconstruir_abas)
-            except Exception:
-                self._reconstruir_abas()
+            QTimer.singleShot(0, self._reconstruir_abas)
         else:
-            try:
-                QTimer.singleShot(0, self._preencher_cards)
-                QTimer.singleShot(0, self._atualizar_monitor)
-            except Exception:
-                self._preencher_cards()
-                self._atualizar_monitor()
+            QTimer.singleShot(0, self._preencher_cards)
+            QTimer.singleShot(0, self._atualizar_monitor)
 
         u = self._ultima_atualizacao_planilhas
         p = self._proxima_atualizacao_planilhas
@@ -474,10 +467,9 @@ class JanelaServidor(QMainWindow):
             self.atualizar_status_planilhas(u, p)
 
     def atualizar_mapeamento_threadsafe(self, e, r):
-        try:
-            self.sig_atualizar_dados.emit(e, r)
-        except Exception:
-            self.atualizar_dados(e, r)
+        # Envia sinal para atualizar na thread da GUI.
+        # NUNCA chamar self.atualizar_dados diretamente daqui se estiver em outra thread.
+        self.sig_atualizar_dados.emit(e, r)
 
     def _recalcular_resumos_execucao(self):
         self._resumo_sucesso = []
