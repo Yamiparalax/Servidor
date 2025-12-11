@@ -1,5 +1,5 @@
 # Server Dependencies
-PySide6
+PyQt5
 pandas
 google-cloud-bigquery
 google-auth

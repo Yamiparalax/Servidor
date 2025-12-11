@@ -12,13 +12,13 @@ import ctypes.wintypes as wintypes
 import threading
 import traceback
 
-from PySide6.QtWidgets import (
+from PyQt5.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QTableWidget,
     QTableWidgetItem, QMessageBox, QDialog, QFormLayout, QLineEdit, QCheckBox,
     QHeaderView, QFrame
 )
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QFont, QPixmap, QPalette, QBrush
+from PyQt5.QtCore import Qt
+from PyQt5.QtGui import QFont, QPixmap, QPalette, QBrush
 
 # log
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -236,7 +236,7 @@ def ask_yes_no(parent, titulo: str, texto: str, yes_text: str = "Sim", no_text: 
     box.setText(texto)
     yes = box.addButton(yes_text, QMessageBox.YesRole)
     no = box.addButton(no_text, QMessageBox.NoRole)
-    box.exec()
+    box.exec_()
     return box.clickedButton() == yes
 
 class EditorDialog(QDialog):
@@ -457,7 +457,7 @@ class CredMain(QWidget):
 
     def _on_new(self) -> None:
         dlg = EditorDialog(self)
-        if dlg.exec() == QDialog.Accepted:
+        if dlg.exec_() == QDialog.Accepted:
             self._reload()
 
     def _on_edit_doubleclick(self, row: int, col: int) -> None:
@@ -469,7 +469,7 @@ class CredMain(QWidget):
         except Exception:
             u, p = "", ""
         dlg = EditorDialog(self, metodo=metodo, usuario=u, senha=p)
-        if dlg.exec() == QDialog.Accepted:
+        if dlg.exec_() == QDialog.Accepted:
             self._reload()
 
     def _on_delete(self) -> None:
@@ -498,7 +498,7 @@ def _cli(args: List[str]) -> int:
             app.setFont(QFont("Segoe UI", 12))
             w = CredMain()
             w.show()
-            return app.exec()
+            return app.exec_()
         except Exception:
             logger.error("Falha na GUI:\n%s", traceback.format_exc())
             return 1
