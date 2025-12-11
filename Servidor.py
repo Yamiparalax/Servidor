@@ -9,6 +9,7 @@
 #            e configuração de ambiente (HML/PROD/OFFLINE).
 # ==============================================================================
 import sys
+import os
 import subprocess
 from pathlib import Path
 
@@ -27,11 +28,7 @@ def check_dependencies():
     
     missing = []
     
-    try:
-        import PyQt5
-    except ImportError:
-        missing.append("PyQt5")
-        
+    # 1. Check imports basicos
     try:
         import pandas
     except ImportError:
@@ -41,14 +38,43 @@ def check_dependencies():
         import psutil
     except ImportError:
         missing.append("psutil")
+
+    try:
+        import win32api
+    except ImportError:
+        missing.append("pywin32")
+        
+    # 2. Check PyQt5 Advanced (DLL Load Limit)
+    pyqt_broken = False
+    try:
+        import PyQt5
+        from PyQt5.QtWidgets import QApplication
+    except (ImportError, Exception):
+        # Includes DLL load failed
+        pyqt_broken = True
+        missing.append("PyQt5")
         
     if missing:
-        print(f"--- INSTALANDO DEPENDÊNCIAS FALTANTES: {', '.join(missing)} ---")
+        print(f"--- CORRIGINDO DEPENDÊNCIAS FALTANTES/QUEBRADAS: {', '.join(missing)} ---")
         try:
-            subprocess.check_call([sys.executable, "-m", "pip", "install"] + missing)
-            print("--- INSTALAÇÃO CONCLUÍDA. REINICIANDO... ---")
+            cmd = [sys.executable, "-m", "pip", "install"]
+            
+            # Se PyQt5 estiver quebrado, força reinstall para corrigir DLLs
+            if pyqt_broken:
+                cmd.append("--force-reinstall")
+                cmd.append("--ignore-installed")
+                
+            cmd.extend(missing)
+            
+            subprocess.check_call(cmd)
+            print("--- CORREÇÃO CONCLUÍDA. REINICIANDO AGORA... ---")
+            
+            # Restart script
+            os.execv(sys.executable, ['python'] + sys.argv)
+            
         except Exception as e:
-            print(f"ERRO AO INSTALAR: {e}")
+            print(f"ERRO CRÍTICO AO INSTALAR: {e}")
+            print("Tente rodar manualmente: pip install PyQt5 PyQt5-Qt5 --force-reinstall")
             input("Pressione ENTER para sair...")
             sys.exit(1)
 
