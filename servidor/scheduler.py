@@ -464,98 +464,106 @@ class AgendadorMetodos:
             dias = self._normalizar_dias_semana(reg.get("dia_semana"))
             if agora.weekday() not in dias: continue
             
-            # 3. Calcula Esperado até AGORA
+            # 3. Calcula Slots Esperados até AGORA
             hors = self._normalizar_horarios(reg.get("horario"))
-            qtd_esperada = 0
             slots_passados = []
             for hhmm in hors:
                 try:
                     h, m = map(int, hhmm.split(":"))
                     dt_slot = datetime(agora.year, agora.month, agora.day, h, m, 0, tzinfo=self.tz)
                     if dt_slot <= agora: # Já deveria ter acontecido
-                        qtd_esperada += 1
-                        slots_passados.append(dt_slot)
+                         # Considera apenas slots com mais de 30s de atraso para evitar conflito de borda
+                         if (agora - dt_slot).total_seconds() > 30:
+                             slots_passados.append(dt_slot)
                 except:
                     pass
             
-            if qtd_esperada == 0:
+            if not slots_passados:
                 continue
+                
+            ultimo_slot_obrigatorio = sorted(slots_passados)[-1]
 
-            # 4. Verifica Execuções Reais + Gatilhos Locais
+            # 4. Verifica ÚLTIMA EXECUÇÃO REAL (Data/Hora)
             nk = NormalizadorDF.norm_key(met)
-            qtd_real = contagem_hoje.get(nk, 0)
             
-            # Conta também o que já disparamos localmente hoje mas ainda não consta no df_exec
-            qtd_local = 0
+            # Obtém maior data de execução do dia (do DF ou Local)
+            ultima_exec_real = None
+            
+            # Do DataFrame
+            if not df_hj.empty and c_met and "dt_inicio" in df_hj.columns:
+                 # Filtra linhas deste método
+                 mask_met = df_hj[c_met].apply(NormalizadorDF.norm_key) == nk
+                 df_m = df_hj[mask_met]
+                 if not df_m.empty:
+                     # Pega o maximo dt_inicio
+                     try:
+                         # Assume que dt_inicio ja esta em datetime ou converte
+                         max_dt = pd.to_datetime(df_m["dt_inicio"], errors='coerce').max()
+                         if pd.notna(max_dt):
+                             # Garante timezone
+                             if max_dt.tzinfo is None:
+                                 max_dt = max_dt.replace(tzinfo=self.tz)
+                             ultima_exec_real = max_dt
+                     except: pass
+            
+            # Do Local (Memoria) - Pega o registro mais recente
             with self.lock:
                 for (m_key, dt_ref) in self._execucoes_gatilho_local:
                     if m_key == nk and dt_ref.date() == agora.date():
-                         # Verifica se esse gatilho é para um slot que estamos contando
-                         # Se o gatilho foi "RECUPERACAO" ou "AGENDADO" para um horario X
-                         # Precisamos garantir que não contamos duplicado com o DF
-                         # Simplesmente somamos tudo e assumimos que o Sincronizador vai lidar com a consistencia
-                         qtd_local += 1
+                        if ultima_exec_real is None or dt_ref > ultima_exec_real:
+                            ultima_exec_real = dt_ref
 
-            deficit = qtd_esperada - (qtd_real + qtd_local)
+            # LÓGICA "ONE-AND-DONE" (Usuario pediu: tira deficit, roda uma vez e espera o proximo)
+            precisa_rodar = False
             
-            if deficit <= 0:
+            if ultima_exec_real is None:
+                # Nunca rodou hoje, mas tem slot passado -> Roda
+                precisa_rodar = True
+            else:
+                # Já rodou algo hoje. Verifica se rodou DEPOIS do último slot obrigatório.
+                # Margem de tolerância: se rodou até 2 mins ANTES do slot, conta como aquele slot? 
+                # Melhor: se ultima_exec_real < ultimo_slot_obrigatorio -> Está atrasado.
+                # Mas cuidado: se eu rodei as 10:05 para o slot das 10:00.
+                # ultima_exec (10:05) > slot (10:00). OK.
+                # Se eu rodei as 09:55 (adiantado).
+                # ultima_exec (09:55) < slot (10:00). Atrasado. Roda de novo.
+                if ultima_exec_real < ultimo_slot_obrigatorio:
+                    precisa_rodar = True
+            
+            if not precisa_rodar:
                 continue
-            
-            # TEM DEFICIT -> Tenta recuperar UMA execução agora (a mais recente) e ignora o resto ("Skip catchup storm")
-            
-            # 5. Verifica se já está rodando (evita empilhamento)
+
+            # 5. Verifica se já está rodando
             with self.lock:
                 if nk in self._metodos_rodando:
                     continue 
-                
-                # 6. Verifica Cooldown (1 minuto após ultima execução)
                 ultimo_fim = self._ultimos_terminos.get(nk)
             
-            pode_ir = True
+            # 6. Cooldown
             if ultimo_fim:
-                delta = (agora - ultimo_fim).total_seconds()
-                if delta < 60: # Menos de 60 segundos
-                    pode_ir = False
+                if (agora - ultimo_fim).total_seconds() < 60:
+                    continue
             
-            if pode_ir:
-                # Pega o slot mais recente (o último que deveria ter rodado)
-                slot_ref = slots_passados[-1] if slots_passados else agora
+            # EXECUTA
+            self.logger.warning(f"CATCHUP: {met} está atrasado (Last Run: {ultima_exec_real} < Slot: {ultimo_slot_obrigatorio}). Executando agora.")
+            
+            ctx = {
+                "origem": "RECUPERACAO",
+                "justificativa": f"Atrasado (Ref Slot {ultimo_slot_obrigatorio.strftime('%H:%M')})",
+                "slot_ref": ultimo_slot_obrigatorio,
+                "usuario": f"{getpass.getuser()}@c6bank.com"
+            }
+            
+            with self.lock:
+                self._metodos_rodando.add(nk)
+                # Marca que rodamos AGORA para satisfazer a verificação no proximo loop imediatamente
+                self._execucoes_gatilho_local.add((nk, agora))
                 
-                # IMPORTANTE: Se o deficit for > 1 (ex: 10 execucoes atrasadas), 
-                # executamos APENAS 1 (a mais recente) e marcamos as outras como "já gatilhadas" virtualmente
-                # para impedir que o scheduler dispare em loop 2, 3, 4... vezes seguidas.
-                
-                if deficit > 1:
-                     self.logger.warning(f"CATCHUP: {met} tem deficit de {deficit}. Executando APENAS a última ({slot_ref}) e ignorando {deficit-1} passadas.")
-                     
-                     # Adiciona "falsos positivos" na memória local para zerar o deficit
-                     with self.lock:
-                        # Adiciona N-1 entradas dummys para enganar a contagem de 'qtd_local' no proximo loop
-                        # Usamos slots antigos
-                        for i in range(deficit - 1):
-                            # slot dummy qualquer de hoje
-                            self._execucoes_gatilho_local.add((nk, agora))
-
-                ctx = {
-                    "origem": "RECUPERACAO", # CAPS para destaque
-                    "justificativa": f"Deficit: {deficit} (Catchup Unico)",
-                    "slot_ref": slot_ref,
-                    "usuario": f"{getpass.getuser()}@c6bank.com"
-                }
-                
-                self.logger.info(f"CATCHUP: Lançando {met} | Deficit {deficit} reduzido para 1")
-                
-                # Marca como rodando preventivamente (será confirmado no callback de inicio real, mas evita duplo disparo no loop rapido)
+            try:
+                self.enfileirar_callback(met, path, ctx, agora)
+            except:
                 with self.lock:
-                    self._metodos_rodando.add(nk)
-                    # Adiciona este disparo real na memoria local
-                    self._execucoes_gatilho_local.add((nk, slot_ref)) # <--- IMPORTANTE: Adicionar o real também!
-                    
-                try:
-                    self.enfileirar_callback(met, path, ctx, agora)
-                except:
-                    with self.lock:
-                        self._metodos_rodando.discard(nk)
+                    self._metodos_rodando.discard(nk)
 
     def _disparar_vencidos(self):
         agora = datetime.now(self.tz)
