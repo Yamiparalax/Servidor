@@ -121,14 +121,16 @@ def main():
     def cb_exec_inicio(metodo, ctx, inicio):
         logger.info(f"EXEC_INICIO: {metodo}")
         agendador.registrar_inicio_execucao(metodo)
-        if janela_holder["janela"]:
-            janela_holder["janela"].marcar_metodo_ocupado(metodo, True)
+        # REMOVIDO: Atualização de GUI via callback (thread hazard). Usando polling agora.
+        # if janela_holder["janela"]:
+        #    janela_holder["janela"].marcar_metodo_ocupado(metodo, True)
 
     def cb_exec_fim(metodo, ctx, rc, log_filho):
         logger.info(f"EXEC_FIM: {metodo} rc={rc}")
         agendador.registrar_fim_execucao(metodo)
-        if janela_holder["janela"]:
-            janela_holder["janela"].marcar_metodo_ocupado(metodo, False)
+        # REMOVIDO: Atualização de GUI via callback (thread hazard). Usando polling agora.
+        # if janela_holder["janela"]:
+        #    janela_holder["janela"].marcar_metodo_ocupado(metodo, False)
         
         # Se for solicitação, notifica o usuário final
         origem = str(ctx.get("origem", "")).lower()

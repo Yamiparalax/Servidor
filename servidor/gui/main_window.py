@@ -614,7 +614,7 @@ class JanelaServidor(QMainWindow):
         self.nav_list.addItem(item)
         self.stack.addWidget(pm)
 
-        # ABA BUSCA (Global)
+        # ABA BUSCA (Global) - Criada mas nao adicionada ao stack aqui para não quebrar indices
         pb = QWidget()
         lb = QVBoxLayout(pb)
         # Scroll para busca
@@ -624,15 +624,15 @@ class JanelaServidor(QMainWindow):
         # Flow layout para resultados de busca (usando grid para simular)
         self.gb_busca = QGridLayout(cb)
         self.gb_busca.setSpacing(20)
-        self.gb_busca.setContentsMargins(30, 30, 30, 30)
+        self.gb_busca.setContentsMargins(30,30,30,30)
         # Alinhamento topo/esquerda
         self.gb_busca.setAlignment(Qt.AlignTop | Qt.AlignLeft)
         
         sb.setWidget(cb)
         lb.addWidget(sb)
         
-        self.idx_busca = self.stack.addWidget(pb)
-        # Não adicionamos na nav_list pois é acessada via barra de busca
+        # Vamos adicionar no final, depois das categorias
+        self.widget_busca = pb
 
         # 1. CURRENCY (REMOVIDO)
         # item_cur = QListWidgetItem("CURRENCY")
@@ -715,6 +715,10 @@ class JanelaServidor(QMainWindow):
             
             self.stack.addWidget(scroll_page)
 
+        # Adiciona a Busca no final do Stack (para não atrapalhar índices da NavList)
+        if hasattr(self, "widget_busca"):
+             self.idx_busca = self.stack.addWidget(self.widget_busca)
+
         self._preencher_cards()
         self._atualizar_monitor()
         if self._busca_ativa:
@@ -767,6 +771,27 @@ class JanelaServidor(QMainWindow):
                 card.lbl_proxima.setText(prox)
             except Exception:
                 pass
+            
+            # ATUALIZA STATUS RODANDO (Polling, sem signals)
+            pid_info = execs_snapshot.get(met)
+            is_running = pid_info is not None
+            
+            # Se estiver rodando, força visual
+            if is_running:
+                 try:
+                     card.definir_status_visual("RODANDO")
+                     if card.btn_executar.isEnabled():
+                         card.btn_executar.setEnabled(False)
+                         card.btn_executar.setText("RODANDO...")
+                 except: pass
+            else:
+                 # Se não estiver rodando, restaura se necessário (apenas se estava travado como rodando)
+                 if not card.btn_executar.isEnabled():
+                     try:
+                         card.btn_executar.setEnabled(True)
+                         card.btn_executar.setText("EXECUTAR")
+                         card.definir_status_visual("AGUARDANDO" if prox != "-" else "-")
+                     except: pass
 
             st_txt = "-"
             st_ag = self.get_status_agendamento(met) if self.get_status_agendamento else ""
@@ -1080,7 +1105,6 @@ class JanelaServidor(QMainWindow):
 
 
 
-    @Slot()
     def _tick_gui(self):
         try:
             # --- Check de Virada de Dia (Midnight Reset) ---
