@@ -17,7 +17,7 @@ from win32com.client import Dispatch
 from google.cloud import bigquery
 
 # --- CONFIGURAÇÕES GERAIS ---
-BASE_DIR = Path.home() / "graciliano" / "automacoes" / "cacatua"
+BASE_DIR = Path.home() / "C6 CTVM LTDA, BANCO C6 S.A. e C6 HOLDING S.A" / "Mensageria e Cargas Operacionais - 11.CelulaPython" / "graciliano" / "novo_servidor"
 TZ = pytz.timezone("America/Sao_Paulo")
 TABLE_ID = "datalab-pagamentos.ADMINISTRACAO_CELULA_PYTHON.automacoes_exec"
 
