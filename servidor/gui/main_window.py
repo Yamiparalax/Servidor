@@ -280,10 +280,12 @@ class JanelaServidor(QMainWindow):
         self.lbl_status.setObjectName("statusLabel")
         self.lbl_status.setStyleSheet(f"font-weight: 800; color: {p['aviso']};")
         
-        # Resources (CPU, RAM, SWAP) removed as requested
+        # Search Input - REMOVED
+        # self.input_busca = self._criar_input_busca()
 
-        # Search Input
-        self.input_busca = self._criar_input_busca()
+        # Adiciona widgets ao layout topo
+        topo.addWidget(self.lbl_status)
+        topo.addStretch()
 
         # Auto Sync Button
         self.btn_auto_sync = QPushButton("AUTO SYNC: ON")
