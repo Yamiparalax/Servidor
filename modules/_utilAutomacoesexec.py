@@ -121,9 +121,16 @@ def _read_log_full(log_path: Optional[str], log_text: Optional[str]) -> str:
     return txt
 
 def _coerce_status(s: str) -> str:
-    """Normaliza o status."""
-    v = s.strip().upper()
-    return v
+    """Normaliza o status para os valores permitidos no BigQuery."""
+    v = str(s or "").strip().upper()
+    
+    if "SUCESSO" in v:
+        return "SUCESSO"
+    if "SEM DADOS" in v or "NO DATA" in v or "VAZIO" in v:
+        return "SEM DADOS PARA PROCESSAR"
+    
+    # Qualquer outra coisa é FALHA
+    return "FALHA"
 
 def _guess_usuario_email(u: Optional[str]) -> str:
     """Gera o email do usuário ou usa o logado no Windows."""
