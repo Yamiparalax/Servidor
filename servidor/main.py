@@ -3,7 +3,7 @@ import time
 import gc
 import logging
 import threading
-from PySide6.QtWidgets import QApplication
+from PyQt5.QtWidgets import QApplication
 
 from servidor.config import Config
 from servidor.core import (
@@ -218,7 +218,7 @@ def main():
     
 
 
-    return app.exec()
+    return app.exec_()
 
 if __name__ == "__main__":
     sys.exit(main())

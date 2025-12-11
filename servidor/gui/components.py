@@ -1,5 +1,5 @@
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import (
+from PyQt5.QtCore import Qt, pyqtSignal
+from PyQt5.QtWidgets import (
     QWidget,
     QVBoxLayout,
     QHBoxLayout,
@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
 from servidor.gui.styles import EstilosGUI
 
 class AutomationCard(QFrame):
-    sig_parar_solicitado = Signal(str)
+    sig_parar_solicitado = pyqtSignal(str)
 
     def __init__(self, titulo):
         super().__init__()

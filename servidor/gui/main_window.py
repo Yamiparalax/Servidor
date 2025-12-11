@@ -5,9 +5,10 @@ import pandas as pd
 from datetime import datetime
 from functools import partial
 
-from PySide6.QtCore import Qt, Signal, Slot, QTimer, QSize
-from PySide6.QtGui import QIcon, QAction, QTextCursor
-from PySide6.QtWidgets import (
+from PyQt5.QtCore import Qt, pyqtSignal, pyqtSlot, QTimer, QSize
+from PyQt5.QtGui import QIcon, QTextCursor
+from PyQt5.QtWidgets import (
+    QAction,
     QMainWindow,
     QWidget,
     QVBoxLayout,
@@ -42,9 +43,9 @@ from servidor.gui.components import (
 # from servidor.gui.widgets_extras import WeatherDialog, CurrencyDialog, CurrencyPage, WeatherWidget (REMOVIDO)
 
 class JanelaServidor(QMainWindow):
-    sig_atualizar_dados = Signal(object, object)
-    sig_marcar_ocupado = Signal(str, bool)
-    sig_log = Signal(str)
+    sig_atualizar_dados = pyqtSignal(object, object)
+    sig_marcar_ocupado = pyqtSignal(str, bool)
+    sig_log = pyqtSignal(str)
 
     def __init__(
         self,
@@ -412,7 +413,7 @@ class JanelaServidor(QMainWindow):
         except Exception:
             pass
 
-    @Slot(float, float, float, int)
+    @pyqtSlot(float, float, float, int)
     def _on_recursos_atualizados(self, c, r, s, t):
         p = EstilosGUI.obter_paleta()
         
@@ -450,7 +451,7 @@ class JanelaServidor(QMainWindow):
         except Exception:
             pass
 
-    @Slot(object, object)
+    @pyqtSlot(object, object)
     def atualizar_dados(self, df_exec, df_reg):
         self._parar_refresh_timer()
         self.df_exec = df_exec.copy() if df_exec is not None else pd.DataFrame()
