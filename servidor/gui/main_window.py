@@ -124,6 +124,20 @@ class JanelaServidor(QMainWindow):
         self.timer_gui.timeout.connect(self._tick_gui)
         self.timer_gui.start(1000)
 
+        # Inicia Watchers em Background (Threads)
+        try:
+             if hasattr(self.sincronizador, "iniciar_monitoramento"):
+                 self.sincronizador.iniciar_monitoramento()
+        except Exception:
+             pass
+
+        try:
+             if hasattr(self.monitor_solicitacoes, "iniciar") and not hasattr(self.monitor_solicitacoes, "observer"):
+                  # Se tiver 'iniciar' explicito e nao for observer automatico no init
+                  self.monitor_solicitacoes.iniciar()
+        except Exception:
+             pass
+
     def _setup_tray_icon(self):
         try:
             if not QSystemTrayIcon.isSystemTrayAvailable():
@@ -1213,10 +1227,11 @@ class JanelaServidor(QMainWindow):
             pass
 
     def marcar_metodo_ocupado(self, met, ocupado: bool):
+        # Envia sinal seguro para GUI. NUNCA chamar _slot direto de thread!
         try:
             self.sig_marcar_ocupado.emit(met, bool(ocupado))
         except Exception:
-            self._slot_marcar_ocupado(met, bool(ocupado))
+            pass
 
     @Slot(str, bool)
     def _slot_marcar_ocupado(self, met, ocupado):
