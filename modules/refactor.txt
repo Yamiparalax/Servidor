@@ -138,7 +138,34 @@ Implemente uma classe `Execucao` que detecta o ambiente.
 * **PROIBIDO** usar `google.cloud.bigquery.Client` diretamente se puder evitar.
 * **OBRIGATÓRIO** usar `pandas_gbq` para leitura e escrita sempre que houver DataFrames envolvidos.
 * **OBRIGATÓRIO** passar flag `use_bqstorage_api=False` em `read_gbq` para forçar REST API.
-* **AUTENTICAÇÃO** deve ser via `pydata_google_auth` ou Service Account padrão, mas sempre via protocolo REST.
+
+## 7.1. INSERÇÃO SEGURA (DEDUPLICAÇÃO VIA STAGING) - OBRIGATÓRIO
+
+Para evitar duplicatas, **NUNCA** faça append direto na tabela final. Use sempre o padrão **Staging Table**:
+
+1. Crie o nome da tabela temporária: `TABELA_STAGING = f"{TABELA_FINAL}_staging"`.
+2. Suba o DataFrame para a Staging (**Overwrite**):
+    ```python
+    pandas_gbq.to_gbq(df, TABELA_STAGING, if_exists='replace', ...)
+    ```
+3. Execute SQL para inserir **apenas linhas novas** na final (Comparação Total):
+    ```python
+    sql_dedup = f"""
+        INSERT INTO `{TABELA_FINAL}`
+        SELECT * FROM `{TABELA_STAGING}` S
+        WHERE NOT EXISTS (
+            SELECT 1 FROM `{TABELA_FINAL}` F
+            WHERE TO_JSON_STRING(S) = TO_JSON_STRING(F)
+        )
+    """
+    # Ou explicitamente comparando colunas se TO_JSON_STRING for pesado, mas TO_JSON é o padrão universal pedido.
+    ```
+    (Nota: Se preferir comparar colunas explicitamente `S.col1 = F.col1 AND ...`, pode, mas deve cobrir TODAS as colunas).
+
+4. Delete a Staging:
+    ```python
+    client.query(f"DROP TABLE IF EXISTS `{TABELA_STAGING}`")
+    ```
 
 ---
 
