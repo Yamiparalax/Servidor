@@ -1080,6 +1080,7 @@ class JanelaServidor(QMainWindow):
 
 
 
+    @Slot()
     def _tick_gui(self):
         try:
             # --- Check de Virada de Dia (Midnight Reset) ---
@@ -1239,6 +1240,13 @@ class JanelaServidor(QMainWindow):
             card = self.cards.get(met)
             if not card:
                 return
+            
+            # Evita repintar se já estiver no estado desejado
+            estado_atual_rodando = (card.lbl_status_badge.text().startswith("RODANDO") or not card.btn_executar.isEnabled())
+            if ocupado and estado_atual_rodando:
+                return
+            if not ocupado and not estado_atual_rodando:
+                return
 
             if ocupado:
                 try:
@@ -1251,6 +1259,9 @@ class JanelaServidor(QMainWindow):
                 try:
                     card.btn_executar.setEnabled(True)
                     card.btn_executar.setText("EXECUTAR")
+                    # Restaura status original (será atualizado pelo polling em breve)
+                    # Mas para feedback visual imediato:
+                    card.definir_status_visual("AGUARDANDO" if card.lbl_proxima.text() != "-" else "-")
                 except Exception:
                     pass
         except Exception:
