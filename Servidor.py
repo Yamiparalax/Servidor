@@ -66,17 +66,38 @@ def check_dependencies():
                 
             cmd.extend(missing)
             
+            print(f"Tentando instalar via repositório padrão...")
             subprocess.check_call(cmd)
-            print("--- CORREÇÃO CONCLUÍDA. REINICIANDO AGORA... ---")
             
-            # Restart script
-            os.execv(sys.executable, ['python'] + sys.argv)
-            
-        except Exception as e:
-            print(f"ERRO CRÍTICO AO INSTALAR: {e}")
-            print("Tente rodar manualmente: pip install PyQt5 PyQt5-Qt5 --force-reinstall")
-            input("Pressione ENTER para sair...")
-            sys.exit(1)
+        except Exception:
+            print("--- FALHA NO REPOSITÓRIO PADRÃO. TENTANDO PYPI OFICIAL... ---")
+            try:
+                # Fallback para PyPI oficial (bypass proxy/artifactory corporativo se falhar)
+                cmd_fallback = [sys.executable, "-m", "pip", "install"]
+                if pyqt_broken:
+                    cmd_fallback.append("--force-reinstall")
+                    cmd_fallback.append("--ignore-installed")
+                
+                cmd_fallback.extend(["--index-url", "https://pypi.org/simple", "--trusted-host", "pypi.org"])
+                cmd_fallback.extend(missing)
+                
+                subprocess.check_call(cmd_fallback)
+                
+            except Exception as e:
+                print(f"ERRO CRÍTICO AO INSTALAR: {e}")
+                print("Tente rodar manualmente: pip install PyQt5 PyQt5-Qt5 --force-reinstall --index-url https://pypi.org/simple")
+                input("Pressione ENTER para sair...")
+                sys.exit(1)
+
+        print("--- CORREÇÃO CONCLUÍDA. REINICIANDO AGORA... ---")
+        
+        # Restart script
+        try:
+             os.execv(sys.executable, ['python'] + sys.argv)
+        except OSError:
+             # Fallback execution replacer
+             subprocess.call([sys.executable] + sys.argv)
+             sys.exit()
 
 check_dependencies()
 
