@@ -379,8 +379,8 @@ class AutomacoesExecClient:
             )
             
             dest_final = dest if dest else [usr]
-            # Mescla logs com os anexos extras passados
-            anexos = self._preparar_anexos(log_path, anexos_extras)
+            # Mescla logs com os anexos extras passados, usando o METODO como nome do zip
+            anexos = self._preparar_anexos(log_path, anexos_extras, custom_name_prefix=metodo)
             
             mailer.send(dest_final, subj, body, anexos)
         except Exception:
@@ -412,17 +412,19 @@ class AutomacoesExecClient:
             )
             
             dest_final = dest if dest else [usr]
-            # Mescla logs com os anexos extras passados
-            anexos = self._preparar_anexos(log_path, anexos_extras)
+            # Mescla logs com os anexos extras passados, usando o METODO como nome do zip
+            anexos = self._preparar_anexos(log_path, anexos_extras, custom_name_prefix=metodo)
             
             mailer.send(dest_final, subj, body, anexos)
         except Exception:
             self.logger.error(f"ERRO_EMAIL_FALHA detalhe={traceback.format_exc()}")
 
-    def _preparar_anexos(self, external_log_path: Optional[str], extras: Optional[List[Any]] = None) -> List[Path]:
+    def _preparar_anexos(self, external_log_path: Optional[str], extras: Optional[List[Any]] = None, custom_name_prefix: Optional[str] = None) -> List[Path]:
         """Coleta logs e extras, e comprime tudo num único ZIP."""
         arquivos_para_zipar = []
         
+        # ... (código intermediário igual) ...
+
         # 1. Coleta Log da Própria Execução
         if self.log_file and Path(self.log_file).exists():
             arquivos_para_zipar.append(Path(self.log_file))
@@ -449,9 +451,10 @@ class AutomacoesExecClient:
             return []
 
         try:
-            # Cria nome do ZIP: NOME_SCRIPT_TIMESTAMP.zip
+            # Cria nome do ZIP: NOME_SCRIPT_TIMESTAMP.zip do chamador
             ts = _now_sp().strftime("%Y%m%d_%H%M%S")
-            zip_name = f"{SCRIPT_NAME}_{ts}.zip"
+            prefix = str(custom_name_prefix if custom_name_prefix else SCRIPT_NAME).upper().replace(" ", "_")
+            zip_name = f"{prefix}_{ts}.zip"
             zip_path = LOG_ROOT / _now_sp().strftime("%d.%m.%Y") / zip_name
             _ensure_dirs(zip_path.parent)
             
