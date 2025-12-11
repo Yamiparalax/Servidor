@@ -9,6 +9,7 @@ import traceback
 import msvcrt
 import pythoncom
 import pytz
+import zipfile
 
 from datetime import datetime
 from pathlib import Path
@@ -402,26 +403,52 @@ class AutomacoesExecClient:
             self.logger.error(f"ERRO_EMAIL_FALHA detalhe={traceback.format_exc()}")
 
     def _preparar_anexos(self, external_log_path: Optional[str], extras: Optional[List[Any]] = None) -> List[Path]:
-        anexos = []
-        # Anexa o log da própria execução (se existir)
+        """Coleta logs e extras, e comprime tudo num único ZIP."""
+        arquivos_para_zipar = []
+        
+        # 1. Coleta Log da Própria Execução
         if self.log_file and Path(self.log_file).exists():
-            anexos.append(self.log_file)
-        # Anexa o log passado por parametro (do script que chamou)
-        if external_log_path and Path(external_log_path).exists():
-            anexos.append(Path(external_log_path))
+            arquivos_para_zipar.append(Path(self.log_file))
             
-        # Adiciona os anexos extras solicitados (csvs, excels, etc.)
+        # 2. Coleta Log Externo (se houver)
+        if external_log_path and Path(external_log_path).exists():
+            # Evita duplicidade se for o mesmo arquivo
+            p_ext = Path(external_log_path)
+            if p_ext not in arquivos_para_zipar:
+                arquivos_para_zipar.append(p_ext)
+            
+        # 3. Coleta Extras
         if extras:
             for item in extras:
                 if item:
                     try:
                         p = Path(str(item))
-                        if p.exists():
-                            anexos.append(p)
+                        if p.exists() and p not in arquivos_para_zipar:
+                            arquivos_para_zipar.append(p)
                     except Exception:
                         pass
-                        
-        return anexos
+        
+        if not arquivos_para_zipar:
+            return []
+
+        try:
+            # Cria nome do ZIP: NOME_SCRIPT_TIMESTAMP.zip
+            ts = _now_sp().strftime("%Y%m%d_%H%M%S")
+            zip_name = f"{SCRIPT_NAME}_{ts}.zip"
+            zip_path = LOG_ROOT / _now_sp().strftime("%d.%m.%Y") / zip_name
+            _ensure_dirs(zip_path.parent)
+            
+            with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+                for arq in arquivos_para_zipar:
+                    # Adiciona arquivo com apenas o nome (sem caminho completo dentro do zip)
+                    zf.write(arq, arcname=arq.name)
+            
+            return [zip_path]
+            
+        except Exception as e:
+            self.logger.error(f"Falha ao criar ZIP de anexos: {e}")
+            # Fallback: retorna lista original se falhar o zip
+            return arquivos_para_zipar
 
 def main():
     """Modo de teste standalone."""
