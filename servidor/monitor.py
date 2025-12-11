@@ -8,7 +8,7 @@ from pathlib import Path
 from datetime import datetime
 from typing import Optional, Callable, Dict, Any
 
-from PySide6.QtCore import QThread, Signal
+from PyQt5.QtCore import QThread, pyqtSignal
 
 from servidor.config import Config
 from servidor.core import NotificadorEmail
@@ -233,8 +233,8 @@ class MonitorSolicitacoes:
         self._parar = True
 
 class MonitorRecursos(QThread):
-    sinal_recursos = Signal(float, float, float, int)  # cpu, ram%, swap%, temp_MB
-    sinal_msg = Signal(str)
+    sinal_recursos = pyqtSignal(float, float, float, int)  # cpu, ram%, swap%, temp_MB
+    sinal_msg = pyqtSignal(str)
 
     def __init__(self, logger, parent=None):
         super().__init__(parent)
