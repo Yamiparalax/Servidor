@@ -66,7 +66,7 @@ def _setup_logger() -> tuple[logging.Logger, Path]:
     daily_dir = LOG_ROOT / _now_sp().strftime("%d.%m.%Y")
     _ensure_dirs(daily_dir)
     
-    filename = f"{SCRIPT_NAME}_{_now_sp().strftime('%Y%m%d_%H%M%S')}.log"
+    filename = f"{SCRIPT_NAME}_{_now_sp().strftime('%Y%m%d_%H%M%S')}_{os.getpid()}.log"
     log_path = daily_dir / filename
     
     logger = logging.getLogger(SCRIPT_NAME)
@@ -301,12 +301,15 @@ class AutomacoesExecClient:
                 "observacao": None
             }
 
-            # 3. Inserção no BigQuery com Lock
-            with FileLock(LOCK_FILE, timeout_s=lock_timeout_s):
+            # 3. Inserção no BigQuery (Sem Lock para concorrência)
+            # with FileLock(LOCK_FILE, timeout_s=lock_timeout_s):
+            try:
                 client = _get_bq_client()
                 errors = client.insert_rows_json(TABLE_ID, [rec], row_ids=[None])
                 if errors:
                     raise RuntimeError(f"BQ Insert Errors: {json.dumps(errors, ensure_ascii=False)}")
+            except Exception as e_bq:
+                raise e_bq
 
             self.logger.info(f"SUCESSO BQ app={SCRIPT_NAME} status={st}")
 
