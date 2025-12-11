@@ -500,41 +500,56 @@ class AgendadorMetodos:
             
             if deficit <= 0:
                 continue
-                
-            # TEM DEFICIT -> Tenta recuperar UMA execução agora
+            
+            # TEM DEFICIT -> Tenta recuperar UMA execução agora (a mais recente) e ignora o resto ("Skip catchup storm")
             
             # 5. Verifica se já está rodando (evita empilhamento)
             with self.lock:
                 if nk in self._metodos_rodando:
-                    continue # Já rodando, espera terminar para lançar a próxima se ainda houver deficit
+                    continue 
                 
                 # 6. Verifica Cooldown (1 minuto após ultima execução)
                 ultimo_fim = self._ultimos_terminos.get(nk)
             
             pode_ir = True
             if ultimo_fim:
-                delta = (agora - ultimo_fim).total_counts() if hasattr(agora - ultimo_fim, "total_counts") else (agora - ultimo_fim).total_seconds()
+                delta = (agora - ultimo_fim).total_seconds()
                 if delta < 60: # Menos de 60 segundos
                     pode_ir = False
             
             if pode_ir:
-                # Escolhe o slot de referência (o mais antigo não executado? ou o mais recente?)
-                # Para log, vamos pegar o último slot que passou e usar como ref
-                # Ou genericamente o agora.
+                # Pega o slot mais recente (o último que deveria ter rodado)
                 slot_ref = slots_passados[-1] if slots_passados else agora
                 
+                # IMPORTANTE: Se o deficit for > 1 (ex: 10 execucoes atrasadas), 
+                # executamos APENAS 1 (a mais recente) e marcamos as outras como "já gatilhadas" virtualmente
+                # para impedir que o scheduler dispare em loop 2, 3, 4... vezes seguidas.
+                
+                if deficit > 1:
+                     self.logger.warning(f"CATCHUP: {met} tem deficit de {deficit}. Executando APENAS a última ({slot_ref}) e ignorando {deficit-1} passadas.")
+                     
+                     # Adiciona "falsos positivos" na memória local para zerar o deficit
+                     with self.lock:
+                        # Adiciona N-1 entradas dummys para enganar a contagem de 'qtd_local' no proximo loop
+                        # Usamos slots antigos
+                        for i in range(deficit - 1):
+                            # slot dummy qualquer de hoje
+                            self._execucoes_gatilho_local.add((nk, agora))
+
                 ctx = {
                     "origem": "RECUPERACAO", # CAPS para destaque
-                    "justificativa": f"Deficit: {deficit} (Esp: {qtd_esperada}, Real: {qtd_real})",
+                    "justificativa": f"Deficit: {deficit} (Catchup Unico)",
                     "slot_ref": slot_ref,
                     "usuario": f"{getpass.getuser()}@c6bank.com"
                 }
                 
-                self.logger.info(f"CATCHUP: Lançando {met} | Deficit {deficit} | Espera 1min OK")
+                self.logger.info(f"CATCHUP: Lançando {met} | Deficit {deficit} reduzido para 1")
                 
                 # Marca como rodando preventivamente (será confirmado no callback de inicio real, mas evita duplo disparo no loop rapido)
                 with self.lock:
                     self._metodos_rodando.add(nk)
+                    # Adiciona este disparo real na memoria local
+                    self._execucoes_gatilho_local.add((nk, slot_ref)) # <--- IMPORTANTE: Adicionar o real também!
                     
                 try:
                     self.enfileirar_callback(met, path, ctx, agora)
