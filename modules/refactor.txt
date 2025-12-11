@@ -156,3 +156,71 @@ Implemente uma classe `Execucao` que detecta o ambiente.
 6.  `if __name__ == "__main__":`
 
 ---
+# 6. EXECUÇÃO STANDALONE (MANUAL)
+Se o script for executado diretamente (`if __name__ == "__main__":`), ele NÃO deve rodar imediatamente.
+Ele DEVE abrir um **Diálogo PyQt5 (300x300)** solicitando:
+1. **Modo de Execução:** ComboBox ou Radio [AUTO, SOLICITACAO].
+2. **Usuário:** Campo de texto (Default: `getpass.getuser()` + `@c6bank.com`).
+3. **Botão Executar**.
+
+**Snippet Obrigatório para o `if __name__ == "__main__":`**:
+
+```python
+def _exibir_dialogo_inicial():
+    """Exibe diálogo PyQt5 para configurar execução manual."""
+    try:
+        from PyQt5.QtWidgets import QApplication, QDialog, QVBoxLayout, QLabel, QComboBox, QLineEdit, QPushButton, QMessageBox
+        from PyQt5.QtCore import Qt
+    except ImportError:
+        print("PyQt5 não encontrado. Rodando direto.")
+        return "AUTO", f"{getpass.getuser()}@c6bank.com"
+
+    app = QApplication.instance() or QApplication([])
+    dialog = QDialog()
+    dialog.setWindowTitle(f"Config: {NOME_SCRIPT}")
+    dialog.resize(300, 300)
+    
+    layout = QVBoxLayout(dialog)
+    
+    # Modo
+    layout.addWidget(QLabel("Modo de Execução:"))
+    cmb_modo = QComboBox()
+    cmb_modo.addItems(["AUTO", "SOLICITACAO"])
+    layout.addWidget(cmb_modo)
+    
+    # Usuário
+    layout.addWidget(QLabel("Usuário:"))
+    txt_user = QLineEdit(f"{getpass.getuser()}@c6bank.com")
+    layout.addWidget(txt_user)
+    
+    # Botão
+    btn_run = QPushButton("EXECUTAR")
+    btn_run.setFixedHeight(40)
+    # Estilo 'Netflix' básico
+    btn_run.setStyleSheet("background-color: #E50914; color: white; font-weight: bold; border-radius: 4px;")
+    
+    def on_click():
+        if not txt_user.text().strip():
+             QMessageBox.warning(dialog, "Erro", "Usuário obrigatório.")
+             return
+        dialog.accept()
+        
+    btn_run.clicked.connect(on_click)
+    layout.addWidget(btn_run)
+    layout.addStretch()
+    
+    if dialog.exec_():
+        return cmb_modo.currentText(), txt_user.text().strip()
+    return None, None
+
+if __name__ == "__main__":
+    # Se rodado manualmente, pergunta configurações
+    modo, user = _exibir_dialogo_inicial()
+    if modo and user:
+        os.environ["MODO_EXECUCAO"] = modo
+        os.environ["USUARIO_EXEC"] = user
+        os.environ["OBSERVACAO"] = "Execução Manual via GUI"
+        main()
+    else:
+        print("Execução cancelada pelo usuário.")
+```
