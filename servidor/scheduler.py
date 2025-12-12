@@ -630,6 +630,15 @@ class AgendadorMetodos:
                 if e.tzinfo: e = e.replace(tzinfo=None) # Ignora TZ para comparacao crua dia/hora
                 execs_ts.append(e)
 
+            # DIAGNOSTICO QUE O USUARIO PEDIU
+            # Vamos logar uma vez a cada 60s se houver slots passados para confirmar que o codigo VÊ o horario
+            if slots_passados:
+                 chave_diag = f"DIAG_{nk}"
+                 last_diag = self._last_log_catchup.get(chave_diag)
+                 if not last_diag or (agora - last_diag).total_seconds() > 60:
+                     self._last_log_catchup[chave_diag] = agora
+                     self.logger.info(f"DIAG_AGENDA: {met} | SlotsHoje={len(hors)} | Passados={len(slots_passados)} {[s.strftime('%H:%M') for s in slots_passados]} | ExecsFound={len(execs_ts)}")
+
             # Para cada slot passado, verifica se houve execução "perto" (tolerancia)
             for slot in slots_passados:
                 slot_naive = slot.replace(tzinfo=None)
