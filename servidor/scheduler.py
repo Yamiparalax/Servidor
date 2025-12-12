@@ -631,12 +631,6 @@ class AgendadorMetodos:
                 execs_ts.append(e)
 
             # DIAGNOSTICO QUE O USUARIO PEDIU
-            # Vamos logar uma vez a cada 60s se houver slots passados para confirmar que o codigo VÊ o horario
-            if slots_passados:
-                 chave_diag = f"DIAG_{nk}"
-                 last_diag = self._last_log_catchup.get(chave_diag)
-                 if not last_diag or (agora - last_diag).total_seconds() > 60:
-                     self._last_log_catchup[chave_diag] = agora
                      self.logger.info(f"DIAG_AGENDA: {met} | SlotsHoje={len(hors)} | Passados={len(slots_passados)} {[s.strftime('%H:%M') for s in slots_passados]} | ExecsFound={len(execs_ts)}")
 
             # Para cada slot passado, verifica se houve execução "perto" (tolerancia)
@@ -719,18 +713,10 @@ class AgendadorMetodos:
             # Pega o alvo (que será o único: o mais recente)
             alvo_slot = slots_vencidos_pendentes[0]
 
-            # Log throttling (10s)
-            should_log = False
-            last_log = self._last_log_catchup.get(nk)
-            if not last_log or (agora - last_log).total_seconds() > 10:
-                should_log = True
-                self._last_log_catchup[nk] = agora
-
-            if should_log:
-                self.logger.info(
-                    f"CATCHUP_CHECK: {met} [slots_hoje={len(hors)}] [vencidos={len(slots_passados)}] "
-                    f"[execs_ok={len(execs_ts)}] -> PENDENTES: {len(slots_vencidos_pendentes)} slots ({slots_vencidos_pendentes[0].strftime('%H:%M')}...)"
-                )
+            self.logger.info(
+                f"CATCHUP_CHECK: {met} [slots_hoje={len(hors)}] [vencidos={len(slots_passados)}] "
+                f"[execs_ok={len(execs_ts)}] -> PENDENTES: {len(slots_vencidos_pendentes)} slots ({slots_vencidos_pendentes[0].strftime('%H:%M')}...)"
+            )
 
             # 5. Verifica se já está rodando
             with self.lock:
@@ -743,8 +729,8 @@ class AgendadorMetodos:
             if ultimo_fim:
                 # Se rodou nos ultimos 15 minutos, IGNORA catchup.
                 # O usuario pediu: "executa só uma vez... e aí executa o restante".
-                # Com 15 min de debounce, ele vai rodar 1, esperar 15 min, rodar outro.
-                if (agora - ultimo_fim).total_seconds() < 900:
+                if (agora - ultimo_fim).total_seconds() < 5:
+                    self.logger.info(f"COOLDOWN_ATIVO: {met} espera 5s")
                     continue
             
             # EXECUTA
