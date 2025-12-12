@@ -602,21 +602,25 @@ class AgendadorMetodos:
             # Filtra execuções deste método hoje no DF
             # Precisamos preparar df_hj aqui
             df_hj = pd.DataFrame()
-            if self.df_exec is not None and not self.df_exec.empty and "dt_full" in self.df_exec.columns:
+            if df_exec is not None and not df_exec.empty and "dt_full" in df_exec.columns:
                 try:
-                    df_hj = self.df_exec[self.df_exec["dt_full"].dt.date == agora.date()].copy()
+                    df_hj = df_exec[df_exec["dt_full"].dt.date == agora.date()].copy()
                 except:
                     pass
             
             execs_hoje = []
-            if column_metodo and self.df_exec is not None and not self.df_exec.empty and "dt_full" in self.df_exec.columns:
+            if column_metodo and not df_hj.empty:
                  # Filtra apenas registros de hoje e do método
                  try:
-                     df_hj = self.df_exec[self.df_exec["dt_full"].dt.date == agora.date()]
-                     if not df_hj.empty:
-                         mask_met = df_hj[column_metodo].apply(NormalizadorDF.norm_key) == nk
-                         df_m = df_hj[mask_met]
-                 except: pass
+                     # FIX: Usar normalizacao UPPER CASE robusta para pegar TRANSACOESRECARGA vs TransacoesRecarga
+                     nk_upper = str(met).upper().strip()
+                     mask_met = df_hj[column_metodo].astype(str).str.upper().str.strip() == nk_upper
+                     df_m = df_hj[mask_met]
+                 except: 
+                     df_m = pd.DataFrame()
+                 
+                 # Pega lista de tempos de execucao
+                 if not df_m.empty:
                  # Pega lista de tempos de execucao
                  if not df_m.empty:
                      # Converte coluna para datetime
