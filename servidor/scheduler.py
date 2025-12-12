@@ -631,7 +631,7 @@ class AgendadorMetodos:
                 execs_ts.append(e)
 
             # DIAGNOSTICO QUE O USUARIO PEDIU
-                     self.logger.info(f"DIAG_AGENDA: {met} | SlotsHoje={len(hors)} | Passados={len(slots_passados)} {[s.strftime('%H:%M') for s in slots_passados]} | ExecsFound={len(execs_ts)}")
+            self.logger.info(f"DIAG_AGENDA: {met} | SlotsHoje={len(hors)} | Passados={len(slots_passados)} {[s.strftime('%H:%M') for s in slots_passados]} | ExecsFound={len(execs_ts)}")
 
             # Para cada slot passado, verifica se houve execução "perto" (tolerancia)
             for slot in slots_passados:
