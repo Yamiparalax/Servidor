@@ -28,7 +28,12 @@ class SincronizadorPlanilhas:
         self._sync_lock = threading.Lock()
         Config.DIR_XLSX_AUTEXEC.mkdir(parents=True, exist_ok=True)
         Config.DIR_XLSX_REG.mkdir(parents=True, exist_ok=True)
+        Config.DIR_XLSX_REG.mkdir(parents=True, exist_ok=True)
         self._thread = None
+        
+        # Cache local para execuções imediatas (Manual ou Agendada) antes do Sync do BQ
+        # Lista de dicts: {metodo_automacao, dt_full, status, ...}
+        self._execucoes_locais_temporarias = []
 
     def iniciar_monitoramento(self):
         if self._thread and getattr(self._thread, "is_alive", lambda: False)():
@@ -52,6 +57,46 @@ class SincronizadorPlanilhas:
             pass
         finally:
             self._sync_lock.release()
+
+    def registrar_execucao_local(self, metodo: str, data_hora: datetime, status: str = "RODANDO", log_path: str = ""):
+        """Registra uma execução localmente para feedback imediato e evitar duplicidade de agendamento."""
+        with self._lock_memoria:
+            # Remove duplicatas exatas se houver
+            self._execucoes_locais_temporarias = [
+                x for x in self._execucoes_locais_temporarias 
+                if not (x["metodo_automacao"] == metodo and x["dt_full"] == data_hora)
+            ]
+            
+            self._execucoes_locais_temporarias.append({
+                "metodo_automacao": metodo,
+                "dt_full": data_hora,
+                "data_exec": data_hora.strftime("%Y-%m-%d"),
+                "hora_exec": data_hora.strftime("%H:%M:%S"),
+                "status": status,
+                "log_arquivo": log_path,
+                "origem_dado": "LOCAL_CACHE"
+            })
+            
+            # Força re-processamento do DF combinado
+            # Mesmo se df_exec estiver vazio, devemos iniciar com este registro
+            
+            novo_row = pd.DataFrame([{
+               "metodo_automacao": metodo,
+               "dt_full": data_hora,
+               "data_exec": data_hora.strftime("%Y-%m-%d"),
+               "hora_exec": data_hora.strftime("%H:%M:%S"),
+               "status": status,
+               "log_arquivo": log_path
+            }])
+            
+            if self.df_exec.empty:
+                 self.df_exec = novo_row
+            elif "dt_full" in self.df_exec.columns:
+                 self.df_exec = pd.concat([novo_row, self.df_exec], ignore_index=True)
+                 try:
+                     self.df_exec = self.df_exec.sort_values("dt_full", ascending=False)
+                 except: pass
+
 
     def registrar_execucao_imediata(self, metodo: str, slot_hora: str = "MANUAL"):
         with self._lock_memoria:
@@ -204,6 +249,33 @@ class SincronizadorPlanilhas:
                 df_exec = self._preparar_exec_df(df_exec)
                 df_exec = self._converter_tudo_para_texto(df_exec)
                 df_reg = self._converter_tudo_para_texto(df_reg)
+                
+                # MERGE COM O CACHE LOCAL (PRESERVA O QUE O BQ AINDA NAO TEM)
+                # Mantem apenas itens do cache que sao mais recentes que o timestamp do BQ ou que nao estao la
+                # Simplificacao: Concatena tudo e deixa o sort resolver. 
+                # Idealmente removeriamos do cache o que ja entrou no BQ.
+                if self._execucoes_locais_temporarias:
+                    df_local = pd.DataFrame(self._execucoes_locais_temporarias)
+                    if not df_local.empty:
+                        # Se BQ trouxe dados, removemos duplicatas baseadas em algum criterio?
+                        # Melhor: Concatena e remove duplicatas exatas?
+                        # Como status pode mudar, vamos assumir que o BQ é a fonte da verdade FINAL,
+                        # exceto para o dia de hoje onde o local pode ser mais recente.
+                        
+                        # Limpa execucoes temporarias antigas (> 2 dias)
+                        limit_date = datetime.now(Config.TZ) - timedelta(days=2)
+                        self._execucoes_locais_temporarias = [
+                            x for x in self._execucoes_locais_temporarias 
+                            if x["dt_full"] > limit_date
+                        ]
+                        
+                        # Recria df_local atualizado
+                        if self._execucoes_locais_temporarias:
+                            df_local = pd.DataFrame(self._execucoes_locais_temporarias)
+                            df_exec = pd.concat([df_local, df_exec], ignore_index=True)
+                            
+                        df_exec = df_exec.sort_values("dt_full", ascending=False)
+
                 with self._lock_memoria:
                     self.df_exec = df_exec
                     self.df_reg = df_reg
@@ -481,57 +553,119 @@ class AgendadorMetodos:
             if not slots_passados:
                 continue
                 
-            ultimo_slot_obrigatorio = sorted(slots_passados)[-1]
-
-            # 4. Verifica ÚLTIMA EXECUÇÃO REAL (Data/Hora)
+            # 4. Verifica Execuções para CADA Slot Passado (Multi-Catchup)
             nk = NormalizadorDF.norm_key(met)
             
-            # Obtém maior data de execução do dia (do DF ou Local)
-            ultima_exec_real = None
+            # Filtra execuções deste método hoje no DF
+            # Precisamos preparar df_hj aqui
+            df_hj = pd.DataFrame()
+            if not self.df_exec.empty and "dt_full" in self.df_exec.columns:
+                try:
+                    df_hj = self.df_exec[self.df_exec["dt_full"].dt.date == agora.date()].copy()
+                except:
+                    pass
             
-            # Do DataFrame
+            execs_hoje = []
             if not df_hj.empty and c_met and "dt_inicio" in df_hj.columns:
-                 # Filtra linhas deste método
                  mask_met = df_hj[c_met].apply(NormalizadorDF.norm_key) == nk
                  df_m = df_hj[mask_met]
+                 # Pega lista de tempos de execucao
                  if not df_m.empty:
-                     # Pega o maximo dt_inicio
+                     # Converte coluna para datetime
                      try:
-                         # Assume que dt_inicio ja esta em datetime ou converte
-                         max_dt = pd.to_datetime(df_m["dt_inicio"], errors='coerce').max()
-                         if pd.notna(max_dt):
-                             # Garante timezone
-                             if max_dt.tzinfo is None:
-                                 max_dt = max_dt.replace(tzinfo=self.tz)
-                             ultima_exec_real = max_dt
+                         tempos = pd.to_datetime(df_m["dt_inicio"], errors='coerce')
+                         # Filtra NaT
+                         tempos = tempos.dropna()
+                         # Localize/Convert TZ
+                         if not tempos.empty:
+                             # Se nao tiver tz, poe. Se tiver, converte.
+                             # Simplificacao: assume que estao no fuso ou converte para naive para comparar
+                             execs_hoje = [t.to_pydatetime() for t in tempos]
                      except: pass
-            
-            # Do Local (Memoria) - Pega o registro mais recente
+
+            # Adiciona gatilhos da memoria local
             with self.lock:
                 for (m_key, dt_ref) in self._execucoes_gatilho_local:
                     if m_key == nk and dt_ref.date() == agora.date():
-                        if ultima_exec_real is None or dt_ref > ultima_exec_real:
-                            ultima_exec_real = dt_ref
+                        execs_hoje.append(dt_ref.replace(tzinfo=None)) # Padroniza naive para comparação simples
+            
+            # Padroniza execs_hoje para ter timezone ou nao ter, igualando a slots
+            # Vamos usar timestamps (float) para facilitar
+            execs_ts = []
+            for e in execs_hoje:
+                if e.tzinfo: e = e.replace(tzinfo=None) # Ignora TZ para comparacao crua dia/hora
+                execs_ts.append(e)
 
-            # LÓGICA "ONE-AND-DONE" (Usuario pediu: tira deficit, roda uma vez e espera o proximo)
-            precisa_rodar = False
+            # Para cada slot passado, verifica se houve execução "perto" (tolerancia)
+            for slot in slots_passados:
+                slot_naive = slot.replace(tzinfo=None)
+                
+                # Tolerancia: consideraremos executado se rodou entre (slot - 2h) e (slot + 12h)??
+                # Nao, catchup é: se nao rodou DEPOIS do slot, roda.
+                # Mas e se rodou 1 minuto antes? (ex: relogio adiantado). Dar 15 min de tolerancia antes.
+                janela_inicio = slot_naive - timedelta(minutes=15)
+                
+                # Verifica se TEM alguma execucao valida para este slot
+                executado = False
+                for exec_time in execs_ts:
+                    # Se rodou DEPOIS da janela de inicio deste slot, conta como execução deste slot (ou de um futuro).
+                    # Problema: uma execucao as 10:00 conta pro slot das 08:00 e das 09:00?
+                    # R: Sim, se eu rodei as 10:00, cobri tudo pra tras. O usuario quer catchup "inteligente" ou "executa N vezes"?
+                    # O usuario disse: "se precisa rodar 3 vezes... esse metodo precisa rodar 3 vezees"
+                    # ENTAO CADA SLOT PRECISA DE UMA EXECUÇÃO "DEDICADA"? 
+                    # Se eu rodei UMA vez as 23:00, isso conta pelos slots das 18, 19 e 20? 
+                    # Usuario disse: "precisa rodar 3 vezees". Entao não conta. Uma execução paga UM slot.
+                    
+                    # Logica de "Consumo de Slot":
+                    # Ordenar slots e execuções. Casar 1 pra 1.
+                    pass
+
+                # Implementação Match Slots x Execuções
+                # Ordena
+                slots_passados.sort()
+                execs_ts.sort()
+                
+                # Vamos contar quantos "créditos" de execução temos hoje
+                # Se temos 3 slots passados e 1 execução, faltam 2.
+                # Quais? Os mais antigos.
+                
+                # Mas precisamos respeitar horario. Uma execução as 09:00 não paga o slot das 10:00.
+                
+            # Refazendo logica simplificada de Contagem:
+            # Slots Vencidos: S1, S2, S3 (ex: 18h, 19h, 20h). Agora 23h.
+            # Execuções Hoje: E1 (ex: 18:05).
+            # Saldo: E1 paga S1. Sobra S2 e S3.
+            # Executar: S2. (Depois no proximo loop executa S3).
             
-            if ultima_exec_real is None:
-                # Nunca rodou hoje, mas tem slot passado -> Roda
-                precisa_rodar = True
-            else:
-                # Já rodou algo hoje. Verifica se rodou DEPOIS do último slot obrigatório.
-                # Margem de tolerância: se rodou até 2 mins ANTES do slot, conta como aquele slot? 
-                # Melhor: se ultima_exec_real < ultimo_slot_obrigatorio -> Está atrasado.
-                # Mas cuidado: se eu rodei as 10:05 para o slot das 10:00.
-                # ultima_exec (10:05) > slot (10:00). OK.
-                # Se eu rodei as 09:55 (adiantado).
-                # ultima_exec (09:55) < slot (10:00). Atrasado. Roda de novo.
-                if ultima_exec_real < ultimo_slot_obrigatorio:
-                    precisa_rodar = True
+            # A execução paga o primeiro slot valido anterior a ela com tolerancia?
             
-            if not precisa_rodar:
+            slots_vencidos_pendentes = []
+            copia_execs = list(sorted(execs_ts))
+            
+            for slot in sorted(slots_passados):
+                slot_naive = slot.replace(tzinfo=None)
+                janela_inicio = slot_naive - timedelta(minutes=15)
+                
+                # Procura a primeira execucao que satisfaca este slot
+                match_idx = -1
+                for i, ex in enumerate(copia_execs):
+                    if ex >= janela_inicio:
+                        # Achou uma execução que serve para este slot (foi feita junto ou depois)
+                        match_idx = i
+                        break
+                
+                if match_idx >= 0:
+                    # Consome esta execução
+                    copia_execs.pop(match_idx)
+                else:
+                    # Nenhuma execução disponivel para cobrir este slot
+                    slots_vencidos_pendentes.append(slot)
+            
+            if not slots_vencidos_pendentes:
                 continue
+
+            # Pega o primeiro pendente (o mais antigo) para executar AGORA
+            alvo_slot = slots_vencidos_pendentes[0]
 
             # 5. Verifica se já está rodando
             with self.lock:
@@ -539,24 +673,23 @@ class AgendadorMetodos:
                     continue 
                 ultimo_fim = self._ultimos_terminos.get(nk)
             
-            # 6. Cooldown
+            # 6. Cooldown (Evita flood se tiver 10 slots atrasados, roda 1 por minuto)
             if ultimo_fim:
                 if (agora - ultimo_fim).total_seconds() < 60:
                     continue
             
             # EXECUTA
-            self.logger.warning(f"CATCHUP: {met} está atrasado (Last Run: {ultima_exec_real} < Slot: {ultimo_slot_obrigatorio}). Executando agora.")
+            self.logger.warning(f"CATCHUP: {met} está atrasado para o slot {alvo_slot.strftime('%H:%M')}. Executando agora.")
             
             ctx = {
                 "origem": "RECUPERACAO",
-                "justificativa": f"Atrasado (Ref Slot {ultimo_slot_obrigatorio.strftime('%H:%M')})",
-                "slot_ref": ultimo_slot_obrigatorio,
+                "justificativa": f"Atrasado (Ref Slot {alvo_slot.strftime('%H:%M')})",
+                "slot_ref": alvo_slot,
                 "usuario": f"{getpass.getuser()}@c6bank.com"
             }
             
             with self.lock:
                 self._metodos_rodando.add(nk)
-                # Marca que rodamos AGORA para satisfazer a verificação no proximo loop imediatamente
                 self._execucoes_gatilho_local.add((nk, agora))
                 
             try:

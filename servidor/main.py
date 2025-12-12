@@ -128,9 +128,23 @@ def main():
     def cb_exec_fim(metodo, ctx, rc, log_filho):
         logger.info(f"EXEC_FIM: {metodo} rc={rc}")
         agendador.registrar_fim_execucao(metodo)
+        if rc == 0:
+             status_exec = "SUCESSO"
+        elif rc == 2:
+             status_exec = "SEM DADOS"
+        else:
+             status_exec = "FALHA"
+             
+        # Registra no cache local para feedback imediato (especialmente catchup inteligente)
+        # Usa data de quando terminou ou quando começou?
+        # Para "ja_executou_hoje" e "catchup", precisamos saber se RODOU.
+        # Se registrarmos agora, estamos dizendo que RODOU com este status.
+        try:
+             sincronizador.registrar_execucao_local(metodo, datetime.now(Config.TZ), status_exec, str(log_filho or ""))
+        except Exception as e:
+             logger.error(f"Erro ao registrar execucao local: {e}")
+             
         # REMOVIDO: Atualização de GUI via callback (thread hazard). Usando polling agora.
-        # if janela_holder["janela"]:
-        #    janela_holder["janela"].marcar_metodo_ocupado(metodo, False)
         
         # Se for solicitação, notifica o usuário final
         origem = str(ctx.get("origem", "")).lower()

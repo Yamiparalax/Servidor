@@ -931,9 +931,25 @@ class JanelaServidor(QMainWindow):
             try:
                 usuario_manual = f"{getpass.getuser()}@c6bank.com"
                 ok = self.executor.enfileirar(metodo, path, {"origem": "manual", "usuario": usuario_manual})
-                if ok and metodo in self.cards:
-                    self.cards[metodo].btn_executar.setText("INICIANDO...")
-                    self.cards[metodo].btn_executar.setEnabled(False)
+                if ok:
+                    # Registra imediatamente como RODANDO para feedback visual instantaneo e "Last Run" (opcional)
+                    # Se quisermos que "Last Run" só atualize quando acabar, não chamamos aqui. 
+                    # Mas o usuário pediu "o label de ultima execução não atualiza e ele deveria atualizar localmente".
+                    # Se colocarmos aqui, vai aparecer como ultima execução = AGORA (RODANDO).
+                    try:
+                        self.sincronizador.registrar_execucao_local(
+                             metodo, 
+                             datetime.now(Config.TZ), 
+                             "RODANDO",
+                             ""
+                        )
+                        # Força atualização da GUI
+                        self._forcar_update()
+                    except: pass
+                    
+                    if metodo in self.cards:
+                         self.cards[metodo].btn_executar.setText("INICIANDO...")
+                         self.cards[metodo].btn_executar.setEnabled(False)
             except Exception as e:
                 self._append_log(f"Falha ao enfileirar {metodo}: {e}")
 
