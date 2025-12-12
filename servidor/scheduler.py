@@ -544,6 +544,11 @@ class AgendadorMetodos:
 
     def _catchup_pendencias(self, agora: datetime):
         mapeamento = self.obter_mapeamento() or {}
+        df_exec = self.obter_exec_df()
+        
+        # LOG DE DEBUGAÇAO DE INICIO
+        self.logger.info(f"CATCHUP_START: Verificando {len(mapeamento)} automacoes. Agora={agora}")
+
         column_metodo = None
         if df_exec is not None and not df_exec.empty:
             for c in df_exec.columns:
@@ -556,11 +561,16 @@ class AgendadorMetodos:
             reg = info.get("registro") or {}
             
             # 1. Verifica se ativo
-            if str(reg.get("status_automacao")).upper() != "ATIVA": continue
+            status = str(reg.get("status_automacao")).upper()
+            if status != "ATIVA": 
+                # self.logger.info(f"SKIP_STATUS: {met} ({status})") 
+                continue
             
             # 2. Verifica Dias da Semana
             dias = self._normalizar_dias_semana(reg.get("dia_semana"))
-            if agora.weekday() not in dias: continue
+            if agora.weekday() not in dias: 
+                # self.logger.info(f"SKIP_DIA: {met} hoje={agora.weekday()} dias={dias}")
+                continue
             
             # 3. Calcula Slots Esperados até AGORA
             hors = self._normalizar_horarios(reg.get("horario"))
@@ -571,13 +581,13 @@ class AgendadorMetodos:
                     dt_slot = datetime(agora.year, agora.month, agora.day, h, m, 0, tzinfo=self.tz)
                     if dt_slot <= agora: # Já deveria ter acontecido
                         # Considera apenas slots com mais de 5s de atraso (antes era 30s)
-                        # Isso evita conflito com o scheduler normal, mas pega casos de lag de startup
                         if (agora - dt_slot).total_seconds() > 5:
                             slots_passados.append(dt_slot)
                 except:
                     pass
             
             if not slots_passados:
+                # self.logger.info(f"SKIP_SLOTS: {met} (0 slots passados)")
                 continue
                 
 
