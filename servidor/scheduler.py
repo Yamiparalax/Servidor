@@ -610,14 +610,14 @@ class AgendadorMetodos:
                     pass
             
             execs_hoje = []
-            if not df_hj.empty and c_met and "dt_inicio" in df_hj.columns:
+            if not df_hj.empty and c_met and "dt_full" in df_hj.columns:
                  mask_met = df_hj[c_met].apply(NormalizadorDF.norm_key) == nk
                  df_m = df_hj[mask_met]
                  # Pega lista de tempos de execucao
                  if not df_m.empty:
                      # Converte coluna para datetime
                      try:
-                         tempos = pd.to_datetime(df_m["dt_inicio"], errors='coerce')
+                         tempos = pd.to_datetime(df_m["dt_full"], errors='coerce')
                          # Filtra NaT
                          tempos = tempos.dropna()
                          # Localize/Convert TZ
