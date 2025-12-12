@@ -491,6 +491,10 @@ class AgendadorMetodos:
             with self.lock:
                 self.proximas_execucoes = proximas
                 self.status_agendamento = status
+            
+            # Log discreto apenas com totais para não spammar
+            # self.logger.debug(f"Agenda recalculada: {len(proximas)} agendados.")
+            pass
         except Exception:
             pass
 
@@ -666,6 +670,11 @@ class AgendadorMetodos:
 
             # Pega o primeiro pendente (o mais antigo) para executar AGORA
             alvo_slot = slots_vencidos_pendentes[0]
+
+            self.logger.info(
+                f"CATCHUP_CHECK: {met} [slots_hoje={len(hors)}] [vencidos={len(slots_passados)}] "
+                f"[execs_ok={len(execs_ts)}] -> PENDENTES: {[s.strftime('%H:%M') for s in slots_vencidos_pendentes]}"
+            )
 
             # 5. Verifica se já está rodando
             with self.lock:
