@@ -98,7 +98,7 @@ class SincronizadorPlanilhas:
                      self.df_exec = self.df_exec.sort_values("dt_full", ascending=False)
                  except: pass
                  
-             self.ultima_modificacao = datetime.now(Config.TZ)
+            self.ultima_modificacao = datetime.now(Config.TZ)
 
 
     def registrar_execucao_imediata(self, metodo: str, slot_hora: str = "MANUAL"):
