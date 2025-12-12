@@ -99,6 +99,13 @@ class SincronizadorPlanilhas:
                  except: pass
                  
             self.ultima_modificacao = datetime.now(Config.TZ)
+            
+            # FIX: Notifica imediatamente os ouvintes (GUI e Agendador) que o DF mudou
+            if self.callback_atualizacao:
+                try:
+                    self.callback_atualizacao(self.df_exec, self.df_reg)
+                except Exception:
+                    pass
 
 
     def registrar_execucao_imediata(self, metodo: str, slot_hora: str = "MANUAL"):
@@ -605,8 +612,8 @@ class AgendadorMetodos:
             if df_exec is not None and not df_exec.empty and "dt_full" in df_exec.columns:
                 try:
                     df_hj = df_exec[df_exec["dt_full"].dt.date == agora.date()].copy()
-                except:
-                    pass
+                except Exception as e:
+                    self.logger.error(f"ERRO_FILTER_DATE: {e}")
             
             execs_hoje = []
             if column_metodo and not df_hj.empty:
@@ -614,9 +621,23 @@ class AgendadorMetodos:
                  try:
                      # FIX: Usar normalizacao UPPER CASE robusta para pegar TRANSACOESRECARGA vs TransacoesRecarga
                      nk_upper = str(met).upper().strip()
-                     mask_met = df_hj[column_metodo].astype(str).str.upper().str.strip() == nk_upper
+                     # Debug Log se nao encontrar nada
+                     vals_db = df_hj[column_metodo].astype(str).str.upper().str.strip()
+                     mask_met = vals_db == nk_upper
                      df_m = df_hj[mask_met]
-                 except: 
+                     
+                     # Se slots passados e df_m vazio, logar amostra para debug
+                     if df_m.empty and slots_passados:
+                         # Logar apenas 1 vez por minuto para nao spammar
+                         chave_debug_match = f"DEBUG_MATCH_{nk}"
+                         last_debug = self._last_log_catchup.get(chave_debug_match)
+                         if not last_debug or (agora - last_debug).total_seconds() > 60:
+                             self._last_log_catchup[chave_debug_match] = agora
+                             amostra = vals_db.unique()[:5]
+                             self.logger.info(f"DEBUG_MATCH_FAIL: Procurando '{nk_upper}' em {len(vals_db)} regs de hoje. Amostra DB: {amostra}")
+
+                 except Exception as e: 
+                     self.logger.error(f"ERRO_FILTER_NAME: {e}")
                      df_m = pd.DataFrame()
                  
                  # Pega lista de tempos de execucao
