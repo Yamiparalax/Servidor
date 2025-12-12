@@ -544,27 +544,12 @@ class AgendadorMetodos:
 
     def _catchup_pendencias(self, agora: datetime):
         mapeamento = self.obter_mapeamento() or {}
-        df_exec = self.obter_exec_df()
-        
-        # Converte df_exec para fácil consulta de contagem hoje
-        contagem_hoje = {}
-        if df_exec is not None and not df_exec.empty and "dt_full" in df_exec.columns:
-            try:
-                hoje = agora.date()
-                df_hj = df_exec[df_exec["dt_full"].dt.date == hoje]
-                if not df_hj.empty:
-                    # Agrupa por método e conta
-                    # Assumindo coluna 'metodo_automacao'
-                    c_met = None
-                    for c in df_hj.columns:
-                        if c.lower() == "metodo_automacao":
-                            c_met = c
-                            break
-                    if c_met:
-                        cnt = df_hj[c_met].apply(NormalizadorDF.norm_key).value_counts()
-                        contagem_hoje = cnt.to_dict()
-            except Exception:
-                pass
+        column_metodo = None
+        if df_exec is not None and not df_exec.empty:
+            for c in df_exec.columns:
+                if c.lower() == "metodo_automacao":
+                    column_metodo = c
+                    break
 
         for met, info in ((m, i) for g in mapeamento.values() for m, i in g.items()):
             path = info.get("path")
@@ -610,9 +595,13 @@ class AgendadorMetodos:
                     pass
             
             execs_hoje = []
-            if not df_hj.empty and c_met and "dt_full" in df_hj.columns:
-                 mask_met = df_hj[c_met].apply(NormalizadorDF.norm_key) == nk
-                 df_m = df_hj[mask_met]
+            if column_metodo and self.df_exec is not None and not self.df_exec.empty and "dt_full" in self.df_exec.columns:
+                 # Filtra apenas registros de hoje e do método
+                 try:
+                     df_hj = self.df_exec[self.df_exec["dt_full"].dt.date == agora.date()]
+                     if not df_hj.empty:
+                         mask_met = df_hj[column_metodo].apply(NormalizadorDF.norm_key) == nk
+                         df_m = df_hj[mask_met]
                  # Pega lista de tempos de execucao
                  if not df_m.empty:
                      # Converte coluna para datetime
@@ -731,8 +720,12 @@ class AgendadorMetodos:
                 ultimo_fim = self._ultimos_terminos.get(nk)
             
             # 6. Cooldown (Evita flood se tiver 10 slots atrasados, roda 1 por minuto)
+            # 6. Cooldown (Evita flood se tiver 10 slots atrasados, roda 1 por minuto)
             if ultimo_fim:
-                if (agora - ultimo_fim).total_seconds() < 60:
+                # Se rodou nos ultimos 15 minutos, IGNORA catchup.
+                # O usuario pediu: "executa só uma vez... e aí executa o restante".
+                # Com 15 min de debounce, ele vai rodar 1, esperar 15 min, rodar outro.
+                if (agora - ultimo_fim).total_seconds() < 900:
                     continue
             
             # EXECUTA
