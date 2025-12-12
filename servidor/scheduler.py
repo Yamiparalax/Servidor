@@ -621,8 +621,6 @@ class AgendadorMetodos:
                  
                  # Pega lista de tempos de execucao
                  if not df_m.empty:
-                 # Pega lista de tempos de execucao
-                 if not df_m.empty:
                      # Converte coluna para datetime
                      try:
                          tempos = pd.to_datetime(df_m["dt_full"], errors='coerce')
