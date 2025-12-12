@@ -433,6 +433,10 @@ class AgendadorMetodos:
         self.thread_scheduler.start()
         self.thread_recalc.start()
 
+    @property
+    def df_exec(self):
+        return self.obter_exec_df() if self.obter_exec_df else None
+
     def parar(self):
         self._stop = True
 
@@ -487,7 +491,10 @@ class AgendadorMetodos:
                 try:
                     h, m = map(int, hhmm.split(":"))
                     dt = datetime(dia.year, dia.month, dia.day, h, m, 0, tzinfo=self.tz)
-                    if dt > base: return dt
+                    # FIX: Allow a small tolerance (1 min lookback) for tasks that *just* happened
+                    # This handles the case where recalc runs at 08:00:01 and misses 08:00:00
+                    if dt >= base - timedelta(minutes=1): 
+                        return dt
                 except: continue
         return None
 
@@ -569,22 +576,25 @@ class AgendadorMetodos:
                     h, m = map(int, hhmm.split(":"))
                     dt_slot = datetime(agora.year, agora.month, agora.day, h, m, 0, tzinfo=self.tz)
                     if dt_slot <= agora: # Já deveria ter acontecido
-                         # Considera apenas slots com mais de 30s de atraso para evitar conflito de borda
-                         if (agora - dt_slot).total_seconds() > 30:
-                             slots_passados.append(dt_slot)
+                        # Considera apenas slots com mais de 5s de atraso (antes era 30s)
+                        # Isso evita conflito com o scheduler normal, mas pega casos de lag de startup
+                        if (agora - dt_slot).total_seconds() > 5:
+                            slots_passados.append(dt_slot)
                 except:
                     pass
             
             if not slots_passados:
                 continue
                 
+
+            
             # 4. Verifica Execuções para CADA Slot Passado (Multi-Catchup)
             nk = NormalizadorDF.norm_key(met)
             
             # Filtra execuções deste método hoje no DF
             # Precisamos preparar df_hj aqui
             df_hj = pd.DataFrame()
-            if not self.df_exec.empty and "dt_full" in self.df_exec.columns:
+            if self.df_exec is not None and not self.df_exec.empty and "dt_full" in self.df_exec.columns:
                 try:
                     df_hj = self.df_exec[self.df_exec["dt_full"].dt.date == agora.date()].copy()
                 except:

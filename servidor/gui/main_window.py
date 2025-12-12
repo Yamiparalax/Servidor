@@ -484,6 +484,13 @@ class JanelaServidor(QMainWindow):
         p = self._proxima_atualizacao_planilhas
         if u or p:
             self.atualizar_status_planilhas(u, p)
+            
+        # FIX: Força o agendador a recalcular imediatamente com os novos dados
+        # Isso garante que se o horário da task for "agora", ele não espere o próximo ciclo
+        try:
+            if self.agendador:
+                self.agendador.atualizar_planilhas()
+        except: pass
 
     def atualizar_mapeamento_threadsafe(self, e, r):
         # Envia sinal para atualizar na thread da GUI.
@@ -758,6 +765,13 @@ class JanelaServidor(QMainWindow):
                 if c_met:
                     df = self.df_exec.copy()
                     df["dt_full"] = pd.to_datetime(df["dt_full"], errors="coerce")
+                    # FIX: Normaliza para timezone naive (local) para comparar com datetime.now()
+                    try:
+                        if df["dt_full"].dt.tz is not None:
+                            df["dt_full"] = df["dt_full"].dt.tz_convert(Config.TZ).dt.tz_localize(None)
+                    except Exception:
+                        pass
+                    
                     df["_norm"] = df[c_met].apply(NormalizadorDF.norm_key)
                     df = df.sort_values("dt_full", ascending=False)
                     grp = df.groupby("_norm")
@@ -809,6 +823,11 @@ class JanelaServidor(QMainWindow):
                 try:
                     grupo = grp.get_group(norm).copy()
                     grupo["dt_full"] = pd.to_datetime(grupo["dt_full"], errors="coerce")
+                    # FIX: Garante naive também aqui caso algo tenha escapado
+                    try:
+                        if grupo["dt_full"].dt.tz is not None:
+                             grupo["dt_full"] = grupo["dt_full"].dt.tz_convert(Config.TZ).dt.tz_localize(None)
+                    except: pass
 
                     mask_fut = grupo["dt_full"].notna() & (grupo["dt_full"] > agora_ts)
                     if mask_fut.any():
