@@ -739,8 +739,8 @@ class AgendadorMetodos:
             if ultimo_fim:
                 # Se rodou nos ultimos 15 minutos, IGNORA catchup.
                 # O usuario pediu: "executa só uma vez... e aí executa o restante".
-                if (agora - ultimo_fim).total_seconds() < 5:
-                    self.logger.info(f"COOLDOWN_ATIVO: {met} espera 5s")
+                if (agora - ultimo_fim).total_seconds() < 900:
+                    # self.logger.info(f"COOLDOWN_ATIVO: {met} espera 15min")
                     continue
             
             # EXECUTA
