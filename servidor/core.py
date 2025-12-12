@@ -88,7 +88,7 @@ class NormalizadorDF:
         
         # 4. Apenas converte para minúsculo.
         # O underline (_), hífen (-), números e pontos no meio do nome SERÃO MANTIDOS.
-        return texto.lower()
+        return texto.upper()
 
 class ClienteBigQuery:
     """

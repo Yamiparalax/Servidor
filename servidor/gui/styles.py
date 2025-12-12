@@ -109,49 +109,54 @@ class EstilosGUI:
         return f"""
             QFrame#AutomationCard {{
                 background-color: {p['bg_card']};
-                border-radius: 12px;
+                border-radius: 16px;
                 border: 1px solid {p['borda_suave']};
+                margin: 4px;
             }}
             QFrame#AutomationCard:hover {{
                 background-color: {p['bg_card_hover']};
                 border: 1px solid {p['destaque']};
-                /* Elevation simulation */
             }}
             QLabel#cardTitle {{
                 color: {p['branco']};
-                font-size: 16px;
-                font-weight: 500; /* Medium */
+                font-size: 15px;
+                font-family: 'Roboto', 'Segoe UI', sans-serif;
+                font-weight: 700;
                 background-color: transparent;
+                letter-spacing: 0.5px;
             }}
             QLabel#cardDetail {{
                 color: {p['texto_sec']};
-                font-size: 12px;
-                font-weight: 400;
+                font-size: 11px;
+                font-weight: 500;
                 background-color: transparent;
+                text-transform: uppercase;
             }}
             QLabel#statusChip {{
-                font-size: 11px;
-                font-weight: 700;
-                padding: 4px 12px;
-                border-radius: 12px; /* Pill shape */
+                font-size: 10px;
+                font-weight: 800;
+                padding: 4px 10px;
+                border-radius: 10px;
+                letter-spacing: 0.5px;
             }}
             QPushButton {{
                 background-color: transparent;
                 color: {p['destaque']};
                 border: 1px solid {p['borda_suave']};
-                border-radius: 18px; /* Material Button Pill */
-                font-weight: 600;
-                font-size: 12px;
+                border-radius: 16px;
+                font-weight: 700;
+                font-size: 11px;
                 padding: 0 16px;
                 text-transform: uppercase;
             }}
             QPushButton:hover {{
-                background-color: rgba(138, 180, 248, 0.08);
+                background-color: rgba(138, 180, 248, 0.1);
                 border: 1px solid {p['destaque']};
+                color: {p['destaque_hover']};
             }}
             QPushButton#btnActionMajor {{
                 background-color: {p['destaque']};
-                color: {p['bg_fundo']}; /* Contrast text */
+                color: {p['bg_fundo']};
                 border: none;
             }}
             QPushButton#btnActionMajor:hover {{

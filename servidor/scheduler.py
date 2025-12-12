@@ -188,6 +188,14 @@ class SincronizadorPlanilhas:
         cols = {c.lower(): c for c in df.columns}
         c_data = cols.get("data_exec") or cols.get("data_execucao")
         c_hora = cols.get("hora_exec") or cols.get("hora_execucao")
+        
+        # FIX: Garante normalização (UPPER) da coluna de método para casar com config
+        c_met = cols.get("metodo_automacao")
+        if c_met:
+             try:
+                 df[c_met] = df[c_met].apply(NormalizadorDF.norm_key)
+             except: pass
+
         if not c_data:
             return df
         s_data = df[c_data].astype(str).str.strip()
@@ -428,6 +436,7 @@ class AgendadorMetodos:
         self.data_ref = datetime.now(self.tz).date()
         self._catchup_executado = False
         self._execucoes_gatilho_local = set() # (metodo_norm, datetime_ref)
+        self._last_log_catchup = {}
         self.thread_scheduler = threading.Thread(target=self._loop_scheduler, daemon=True)
         self.thread_recalc = threading.Thread(target=self._loop_recalc, daemon=True)
         self.thread_scheduler.start()
@@ -702,10 +711,18 @@ class AgendadorMetodos:
             # Pega o primeiro pendente (o mais antigo) para executar AGORA
             alvo_slot = slots_vencidos_pendentes[0]
 
-            self.logger.info(
-                f"CATCHUP_CHECK: {met} [slots_hoje={len(hors)}] [vencidos={len(slots_passados)}] "
-                f"[execs_ok={len(execs_ts)}] -> PENDENTES: {[s.strftime('%H:%M') for s in slots_vencidos_pendentes]}"
-            )
+            # Log throttling (10s)
+            should_log = False
+            last_log = self._last_log_catchup.get(nk)
+            if not last_log or (agora - last_log).total_seconds() > 10:
+                should_log = True
+                self._last_log_catchup[nk] = agora
+
+            if should_log:
+                self.logger.info(
+                    f"CATCHUP_CHECK: {met} [slots_hoje={len(hors)}] [vencidos={len(slots_passados)}] "
+                    f"[execs_ok={len(execs_ts)}] -> PENDENTES: {len(slots_vencidos_pendentes)} slots ({slots_vencidos_pendentes[0].strftime('%H:%M')}...)"
+                )
 
             # 5. Verifica se já está rodando
             with self.lock:
