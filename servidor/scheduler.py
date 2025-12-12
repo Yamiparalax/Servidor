@@ -673,32 +673,41 @@ class AgendadorMetodos:
             
             # A execução paga o primeiro slot valido anterior a ela com tolerancia?
             
-            slots_vencidos_pendentes = []
-            copia_execs = list(sorted(execs_ts))
+            # Lógica "Run Once" / "Last Slot Priority":
+            # O usuário pediu: "executa só uma vez... e aí executa o restante".
+            # Ignoramos slots antigos (ex: 00:00, 01:00) se já temos um slot mais recente (ex: 18:00) vencido.
+            # Focamos apenas no ÚLTIMO slot vencido.
             
-            for slot in sorted(slots_passados):
-                slot_naive = slot.replace(tzinfo=None)
-                janela_inicio = slot_naive - timedelta(minutes=15)
+            # Se não houver slots passados, continue
+            if not slots_passados:
+                continue
                 
-                # Procura a primeira execucao que satisfaca este slot
-                match_idx = -1
-                for i, ex in enumerate(copia_execs):
-                    if ex >= janela_inicio:
-                        # Achou uma execução que serve para este slot (foi feita junto ou depois)
-                        match_idx = i
-                        break
-                
-                if match_idx >= 0:
-                    # Consome esta execução
-                    copia_execs.pop(match_idx)
-                else:
-                    # Nenhuma execução disponivel para cobrir este slot
-                    slots_vencidos_pendentes.append(slot)
+            # Slots Vencidos: apenas o mais recente interessa para ficar "em dia"
+            ultimo_slot_vencido = sorted(slots_passados)[-1]
+            ultimo_slot_naive = ultimo_slot_vencido.replace(tzinfo=None)
+            
+            # Verifica se ESTE slot especifico foi executado
+            # Tolerancia: 15 min antes (ex: rodou 17:50 p/ slot 18:00 vale? Sim)
+            # Ou se rodou DEPOIS do slot (ex: rodou 19:00 p/ slot 18:00 vale? Sim)
+            janela_inicio = ultimo_slot_naive - timedelta(minutes=15)
+            
+            coberto = False
+            for ex in execs_ts:
+                if ex >= janela_inicio:
+                    coberto = True
+                    break
+            
+            if coberto:
+                # O último slot já foi pago. Estamos em dia (ignorando dívidas antigas).
+                slots_vencidos_pendentes = []
+            else:
+                # O último slot NÃO foi pago. Devemos executar.
+                slots_vencidos_pendentes = [ultimo_slot_vencido]
             
             if not slots_vencidos_pendentes:
                 continue
 
-            # Pega o primeiro pendente (o mais antigo) para executar AGORA
+            # Pega o alvo (que será o único: o mais recente)
             alvo_slot = slots_vencidos_pendentes[0]
 
             # Log throttling (10s)
