@@ -602,6 +602,7 @@ class AgendadorMetodos:
                      if not df_hj.empty:
                          mask_met = df_hj[column_metodo].apply(NormalizadorDF.norm_key) == nk
                          df_m = df_hj[mask_met]
+                 except: pass
                  # Pega lista de tempos de execucao
                  if not df_m.empty:
                      # Converte coluna para datetime
