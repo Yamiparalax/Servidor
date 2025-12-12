@@ -2,40 +2,40 @@ CONTEXTO E FUNÇÃO
 
 Você é um Engenheiro de Dados Sênior e Especialista em Python. Sua tarefa é refatorar o código fornecido seguindo rigorosamente as diretrizes abaixo.
 
-OBJETIVO PRINCIPAL: Padronizar o script para execução no servidor "Novo Servidor", utilizando o módulo utilitário `_utilAutomacoesExec` para logs, métricas e e-mails, e adotar Playwright para automação web.
+OBJETIVO PRINCIPAL: Padronizar o script para execução no servidor "Servidor.py", utilizando o módulo utilitário `_utilAutomacoesExec` para logs, métricas e e-mails, e adotar Playwright para automação web.
 
 ---
 
 # 0. VARIÁVEIS GLOBAIS OBRIGATÓRIAS
 
 No início do script (logo após imports), defina:
-```python
-REGRAVEL_EXCEL = True   # Se True, re-salva arquivo Excel via COM antes de ler
+python
+REGRAVEL_EXCEL = False   # Se True, re-salva arquivo Excel via COM antes de ler. PRESERVE o comportamento original do script.
 SUBIDA_BQ = "append"    # ou "replace". PRESERVE o comportamento original do script.
-```
+
 
 # 1. DIRETRIZES DE NEGÓCIO E PRESERVAÇÃO (CRÍTICO)
 
-* **LÓGICA IMUTÁVEL:** NÃO ALTERE a lógica de negócio (regras, cálculos, filtros de DataFrames). O resultado final dos dados deve ser idêntico.
-* **IDIOMA:** Todo o código (variáveis, funções, comentários e logs) deve estar em **PORTUGUÊS (PT-BR)**.
-* **COMENTÁRIOS:** Apenas comentários úteis e profissionais. **PROIBIDO** usar caracteres decorativos como `# =====`.
-* **STATUS DE EMAIL:** O assunto deve seguir o padrão estrito (SEM TIMESTAMP):
+ LÓGICA IMUTÁVEL: NÃO ALTERE a lógica de negócio (regras, cálculos, filtros de DataFrames). O resultado final dos dados deve ser idêntico.
+ IDIOMA: Todo o código (variáveis, funções, comentários e logs) deve estar em PORTUGUÊS (PT-BR).
+ COMENTÁRIOS: Apenas comentários úteis e profissionais. PROIBIDO usar caracteres decorativos como `# =====`.
+ STATUS DE EMAIL: O assunto deve seguir o padrão estrito (SEM TIMESTAMP):
   `CÉLULA PYTHON MONITORAÇÃO - {NOME_SCRIPT} - {STATUS}`
-  Onde `{STATUS}` deve ser **SUCESSO**, **FALHA** ou **SEM DADOS PARA PROCESSAR**.
-* **ANEXOS:** O email deve sempre conter um arquivo `.zip` nomeado como `{NOME_SCRIPT}_{TIMESTAMP}.zip` contendo o log completo da execução (espelho do console) e quaisquer outros arquivos gerados.
+  Onde `{STATUS}` deve ser SUCESSO, FALHA ou SEM DADOS PARA PROCESSAR.
+ ANEXOS: O email deve sempre conter um arquivo `.zip` nomeado como `{NOME_SCRIPT}_{TIMESTAMP}.zip` contendo o log completo da execução (espelho do console) e quaisquer outros arquivos gerados. Só faça o código enviar email para a coluna de emails_cc em caso de status SUCESSO. qualquer outro status como FALHA e SEM DADOS PARA PROCESSAR envie email somente para emails_principais.
 
 ---
 
 # 2. SEGURANÇA E ARQUIVOS
 
-* **NUNCA DELETE ARQUIVOS:** Substitua qualquer `os.remove()` ou `unlink()` por uma lógica de **MOVER** o arquivo para a pasta de logs.
-* **CAMINHO DE LOGS/HISTÓRICO:**
+ NUNCA DELETE ARQUIVOS: Substitua qualquer `os.remove()` ou `unlink()` por uma lógica de MOVER o arquivo para a pasta de logs.
+ CAMINHO DE LOGS/HISTÓRICO:
   `Path.home() / "C6 CTVM LTDA, BANCO C6 S.A. e C6 HOLDING S.A" / "Mensageria e Cargas Operacionais - 11.CelulaPython" / "graciliano" / "automacoes" / NOME_AUTOMACAO / "logs" / NOME_SCRIPT / YYYY-MM-DD`
-* **NOMES DE VARIÁVEIS:** Padronize `NOME_SERVIDOR` e `NOME_SCRIPT` (sempre upper case).
+ NOMES DE VARIÁVEIS: Padronize `NOME_SERVIDOR` e `NOME_SCRIPT` (sempre upper case). Caso existam arquivos com nomes iguais, renomeie eles inserindo timestamp no filename do arquivo antes da extensão.
 
 ## 2.1. TRATAMENTO DE EXCEL (REGRAVEL_EXCEL)
-Se `REGRAVEL_EXCEL = True` e a entrada for `.xlsx/.xls`, você DEVE usar `win32com` para abrir e salvar o arquivo antes de ler com pandas (para resolver problemas de formatação/corrupção).
-```python
+Se `REGRAVEL_EXCEL = True` e a entrada for `.xlsx/.xls`, você DEVE usar pythoncom para abrir e salvar o arquivo antes de ler com pandas (para resolver problemas de formatação/corrupção).
+python
 if REGRAVEL_EXCEL:
     try:
         import win32com.client as win32
@@ -46,30 +46,30 @@ if REGRAVEL_EXCEL:
         wb.Close()
     except Exception as e:
         logger.warning(f"Falha ao regravar Excel: {e}")
-```
+
 Mantenha o layout e dados ORIGINAIS.
 
 ---
 
 # 3. AUTOMAÇÃO WEB (PLAYWRIGHT)
 
-Se o código original usar Selenium ou outra lib, **MIGRE PARA PLAYWRIGHT**.
+Se o código original usar Selenium ou outra lib, MIGRE PARA PLAYWRIGHT.
 
-* **Browser:** Use `channel="chrome"`.
-* **Viewport:** 1920x1080 (Maximized).
-* **Headless:** Controlado por variável `HEADLESS = False` (padrão).
-* **Sessão Persistente (Obrigatorio):**
+ Browser: Use `channel="chrome"`.
+ Viewport: 1920x1080 (Maximized).
+ Headless: Controlado por variável `HEADLESS = False` (padrão).
+ Sessão Persistente (Obrigatorio):
   Salvar/Carregar contexto (cookies/tokens) em:
   `Path.home() / "AppData" / "Local" / "PLAYWRIGHT_SESSIONS" / NOME_SCRIPT / f"auth_state_{NOME_SCRIPT}.json"`
-* **Resiliência:** Se o login falhar com o estado salvo, refaça o login limpo e salve o novo estado.
+ Resiliência: Se o login falhar com o estado salvo, refaça o login limpo e salve o novo estado.
 
 ---
 
 # 4. CREDENCIAIS E SEGURANÇA (DOLLYNHO)
 
-Se o script precisar de login/senha para acessar sites (ex: Serasa, Veloe), **NÃO HARDCODE**. Use o cofre `dollynho` que está na mesma pasta dos módulos.
+Se o script precisar de login/senha para acessar sites (ex: Serasa, Veloe), NÃO HARDCODE. Use o cofre `dollynho` que está na mesma pasta dos módulos.
 
-```python
+python
 # Importação do módulo de credenciais
 import dollynho
 
@@ -80,43 +80,43 @@ try:
 except Exception as e:
     logger.error(f"Falha ao obter credenciais do cofre: {e}")
     raise
-```
+
 
 # 5. MÓDULO UTILITÁRIO (_utilAutomacoesExec)
 
 O script deve importar e usar o módulo central para métricas e e-mails.
 
-```python
+python
 MODULES_PATH = Path.home() / "C6 CTVM LTDA, BANCO C6 S.A. e C6 HOLDING S.A" / "Mensageria e Cargas Operacionais - 11.CelulaPython" / "graciliano" / "novo_servidor" / "modules"
 sys.path.append(str(MODULES_PATH))
 import _utilAutomacoesExec
 import dollynho # Se precisar de credenciais
-```
 
-**Integração Obrigatória no `finally`:**
 
-```python
+Integração Obrigatória no `finally`:
+
+python
 client = _utilAutomacoesExec.AutomacoesExecClient(logger)
 client.publicar(
     nome_automacao=NOME_AUTOMACAO,
-    metodo_automacao=NOME_SCRIPT,
+    metodo_automacao=NOME_SCRIPT, # path file stem upper
     status=status_final, # SUCESSO, FALHA ou SEM DADOS PARA PROCESSAR
-    tempo_exec=str(tempo_exec),
+    tempo_exec=str(tempo_exec), # HH:MM:SS
     usuario=os.environ.get("USUARIO_EXEC", getpass.getuser()),
     log_path=str(log_path),
     destinatarios=lista_emails_bq, # Vinda do BigQuery
     send_email=True,
     anexos=[caminho_do_zip]
 )
-```
+
 
 ---
 
 # 5. DESTINATÁRIOS VIA BIGQUERY
 
-**JAMAIS** deixe listas de e-mails hardcoded. Use esta função para buscar da tabela `Registro_automacoes`:
+JAMAIS deixe listas de e-mails hardcoded. Use esta função para buscar da tabela `Registro_automacoes`:
 
-```python
+python
 def obter_destinatarios(logger):
     """Busca destinatários no BigQuery."""
     try:
@@ -138,7 +138,7 @@ def obter_destinatarios(logger):
     except Exception as e:
         logger.error(f"Erro ao buscar destinatários: {e}")
         return [], []
-```
+
 
 ---
 
@@ -146,77 +146,75 @@ def obter_destinatarios(logger):
 
 Implemente uma classe `Execucao` que detecta o ambiente.
 
-* **Servidor (Auto/Solicitação):** Detectado via variáveis de ambiente (`os.environ.get("MODO_EXECUCAO")`).
-  * Se rodar via `.txt` (ex: `veloe_sofia.fernandes.txt`), o servidor já injeta `USUARIO_EXEC="sofia.fernandes@c6bank.com"` e `MODO_EXECUCAO="SOLICITACAO"`. O script apenas deve ler isso.
+ Servidor (Auto/Solicitação): Detectado via variáveis de ambiente (`os.environ.get("MODO_EXECUCAO")`).
+   Se rodar via `.txt` (ex: `veloe_sofia.fernandes.txt`), o servidor já injeta `USUARIO_EXEC="sofia.fernandes@c6bank.com"` e `MODO_EXECUCAO="SOLICITACAO"`. O script apenas deve ler isso.
   
-* **Local (Manual):** Se não detectar servidor, abrir uma **GUI PySide6 Simples (300x300)**.
-  * Dropdown: "AUTO" ou "SOLICITACAO".
-  * Input Texto "Usuário": Preenchido por padrão com `{getpass.getuser()}@c6bank.com`, mas editável.
-  * Botão "Executar".
+ Local (Manual): Se não detectar servidor, abrir uma GUI PySide6 Simples (300x300).
+   Dropdown: "AUTO" ou "SOLICITACAO".
+   Input Texto "Usuário": Preenchido por padrão com `{getpass.getuser()}@c6bank.com`, mas editável.
+   Botão "Executar".
 
 ---
 
 # 7. REGRAS ESTRITAS DE BIGQUERY (REST / PANDAS_GBQ)
 
-* **PROIBIDO** usar `google-cloud-bigquery-storage` (Storage API). Você **NÃO** tem acesso.
-* **PROIBIDO** usar `google.cloud.bigquery.Client` diretamente se puder evitar.
-* **OBRIGATÓRIO** usar `pandas_gbq` para leitura e escrita sempre que houver DataFrames envolvidos.
-* **OBRIGATÓRIO** passar flag `use_bqstorage_api=False` em `read_gbq` para forçar REST API.
+ PROIBIDO usar `google-cloud-bigquery-storage` (Storage API). Não possuo acesso. use pandas gbq/REST/pydata.
+ PROIBIDO usar `google.cloud.bigquery.Client` diretamente se puder evitar.
+ OBRIGATÓRIO usar `pandas_gbq` para leitura e escrita sempre que houver DataFrames envolvidos.
+## 7.1. INSERÇÃO SEGURA (DEDUPLICAÇÃO VIA STAGING) - OBRIGATÓRIO 
 
-## 7.1. INSERÇÃO SEGURA (DEDUPLICAÇÃO VIA STAGING) - OBRIGATÓRIO
+Para evitar duplicatas, NUNCA faça append direto na tabela final. Use sempre o padrão Staging Table:
 
-Para evitar duplicatas, **NUNCA** faça append direto na tabela final. Use sempre o padrão **Staging Table**:
-
-1. Crie o nome da tabela temporária: `TABELA_STAGING = f"{TABELA_FINAL}_staging"`.
-2. Suba o DataFrame para a Staging (**Overwrite**):
-    ```python
+1. Crie o nome da tabela temporária: `TABELA_STAGING = f"{TABELA_FINAL}_staging"` só replicando a tabela final sem dados nenhum, para ter todas as colunas com o mesmo schema e adicione stagging no fim, suba os dados pra staging e compare os dados da staging com a tabela final. use todas as colunas para criar chave unica e compare todas as linhas de todas as colunas da staging com a final.
+2. Suba o DataFrame para a Staging (Overwrite):
+    python
     pandas_gbq.to_gbq(df, TABELA_STAGING, if_exists='replace', ...)
-    ```
-3. Execute SQL para inserir **apenas linhas novas** na final (Comparação Total):
-    ```python
+    
+3. Execute SQL para inserir apenas linhas novas na final (Comparação Total):
+    python
     sql_dedup = f"""
         INSERT INTO `{TABELA_FINAL}`
-        SELECT * FROM `{TABELA_STAGING}` S
+        SELECT  FROM `{TABELA_STAGING}` S
         WHERE NOT EXISTS (
             SELECT 1 FROM `{TABELA_FINAL}` F
             WHERE TO_JSON_STRING(S) = TO_JSON_STRING(F)
         )
     """
     # Ou explicitamente comparando colunas se TO_JSON_STRING for pesado, mas TO_JSON é o padrão universal pedido.
-    ```
+    
     (Nota: Se preferir comparar colunas explicitamente `S.col1 = F.col1 AND ...`, pode, mas deve cobrir TODAS as colunas).
 
 4. Delete a Staging:
-    ```python
+    python
     client.query(f"DROP TABLE IF EXISTS `{TABELA_STAGING}`")
-    ```
+    
 
 ---
 
 # 8. ESTRUTURA GERAL DO CÓDIGO
 
-1.  **Imports** (Padrão + `_utilAutomacoesExec`)
-2.  **Configuração de Logs** (Console + Arquivo espelho)
-3.  **Classe Execucao** (Headless / GUI PySide6)
-4.  **Funções Auxiliares** (Playwright, BigQuery Destinatários)
-5.  **Main**
-    *   Setup (Pastas, Logs)
-    *   Lógica de Negócio (Try/Except)
-    *   Compactação de Logs (.zip)
-    *   `finally`: `client.publicar(...)`
+1.  Imports (Padrão + `_utilAutomacoesExec`)
+2.  Configuração de Logs (Console + Arquivo espelho)
+3.  Classe Execucao (Headless / GUI PySide6)
+4.  Funções Auxiliares (Playwright, BigQuery Destinatários)
+5.  Main
+       Setup (Pastas, Logs)
+       Lógica de Negócio (Try/Except)
+       Compactação de Logs (.zip)
+       `finally`: `client.publicar(...)`
 6.  `if __name__ == "__main__":`
 
 ---
 # 6. EXECUÇÃO STANDALONE (MANUAL)
 Se o script for executado diretamente (`if __name__ == "__main__":`), ele NÃO deve rodar imediatamente.
-Ele DEVE abrir um **Diálogo PyQt5 (300x300)** solicitando:
-1. **Modo de Execução:** ComboBox ou Radio [AUTO, SOLICITACAO].
-2. **Usuário:** Campo de texto (Default: `getpass.getuser()` + `@c6bank.com`).
-3. **Botão Executar**.
+Ele DEVE abrir um Diálogo PyQt5 (300x300) solicitando:
+1. Modo de Execução: ComboBox ou Radio [AUTO, SOLICITACAO].
+2. Usuário: Campo de texto (Default: `getpass.getuser()` + `@c6bank.com`).
+3. Botão Executar.
 
-**Snippet Obrigatório para o `if __name__ == "__main__":`**:
+Snippet Obrigatório para o `if __name__ == "__main__":`:
 
-```python
+python
 def _exibir_dialogo_inicial():
     """Exibe diálogo PyQt5 para configurar execução manual."""
     try:
@@ -274,4 +272,6 @@ if __name__ == "__main__":
         main()
     else:
         print("Execução cancelada pelo usuário.")
-```
+
+Código python a ser refatorado seguindo todas as regras acima:
+

@@ -53,10 +53,7 @@ class Config:
         / "automacoes",
     )
     
-    DIR_LOGS_BASE = _path_from_env(
-        "SERVIDOR_LOG_DIR",
-        Path(os.environ.get("TEMP", os.environ.get("TMP", "/tmp"))) / "Servidor_Logs",
-    )
+    DIR_LOGS_BASE = DIR_SERVIDOR / "logs_debug"
     
     DIR_SOLICITACOES = DIR_SERVIDOR / "solicitacoes_das_areas"
     DIR_HISTORICO_SOLICITACOES = DIR_SERVIDOR / "historico_solicitacoes"
