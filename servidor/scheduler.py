@@ -17,6 +17,7 @@ class SincronizadorPlanilhas:
         self.intervalo_segundos = int(intervalo_segundos)
         self.callback_atualizacao = callback_atualizacao
         self.ultima_execucao = None
+        self.ultima_modificacao = None # Timestamp de qualquer alteração (Sync do BQ ou Local)
         self.proxima_execucao = None
         self._parar = False
         self._pausado = False
@@ -96,6 +97,8 @@ class SincronizadorPlanilhas:
                  try:
                      self.df_exec = self.df_exec.sort_values("dt_full", ascending=False)
                  except: pass
+                 
+             self.ultima_modificacao = datetime.now(Config.TZ)
 
 
     def registrar_execucao_imediata(self, metodo: str, slot_hora: str = "MANUAL"):
@@ -280,6 +283,7 @@ class SincronizadorPlanilhas:
                     self.df_exec = df_exec
                     self.df_reg = df_reg
                 self.ultima_execucao = datetime.now(Config.TZ)
+                self.ultima_modificacao = self.ultima_execucao
                 self.proxima_execucao = self.ultima_execucao + timedelta(seconds=self.intervalo_segundos)
                 # if self.callback_atualizacao:
                 #    try:
@@ -367,18 +371,35 @@ class SincronizadorPlanilhas:
 
     def _loop(self):
         while not self._parar:
-            for _ in range(int(self.intervalo_segundos)):
-                if self._parar:
-                    return
-                time.sleep(1)
-            if self._pausado:
-                continue
-            try:
-                self.sincronizar_de_arquivos()
-            except Exception:
-                pass
-            finally:
-                gc.collect()
+             # Se pausado, espera curto e continua
+             if self._pausado:
+                 time.sleep(1)
+                 continue
+
+             try:
+                 agora = datetime.now(Config.TZ)
+                 
+                 # Se não tem proxima definida, define para agora (primeira exec)
+                 if not self.proxima_execucao:
+                     self.proxima_execucao = agora
+                 
+                 # Se ainda não chegou a hora
+                 if agora < self.proxima_execucao:
+                     # Espera um pouco (max 1s para responder a stop/pause rapido) ou o tempo restante
+                     # Mas como queremos responsividade ao STOP, sleep(1) é melhor que sleep(delta)
+                     time.sleep(1)
+                     continue
+                 
+                 # Hora de sincronizar
+                 self.sincronizar_de_arquivos()
+                 
+                 # O sincronizar_de_arquivos JA ATUALIZA self.proxima_execucao
+                 # Então o loop vai esperar naturalmente na próxima iteração
+                 
+             except Exception:
+                 time.sleep(5)
+             finally:
+                 gc.collect()
 
     def parar(self):
         self._parar = True

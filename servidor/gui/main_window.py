@@ -94,6 +94,10 @@ class JanelaServidor(QMainWindow):
         # Controle de Virada de Dia (Midnight Reset)
         self.data_atual_gui = datetime.now(Config.TZ).date()
 
+        # Controle de Virada de Dia (Midnight Reset)
+        self.data_atual_gui = datetime.now(Config.TZ).date()
+
+        self._ultima_modificacao_gui = None
         self._ultima_atualizacao_planilhas = None
         self._proxima_atualizacao_planilhas = None
 
@@ -1167,27 +1171,22 @@ class JanelaServidor(QMainWindow):
 
         # --- Polling de Sincronização (Pull safe da threads) ---
         try:
-            # Verifica se o timestamp de atualização do sincronizador mudou
-            sync_ts = getattr(self.sincronizador, "ultima_execucao", None)
+            # Verifica se houve QUALQUER modificação nos dados (BQ ou Local)
+            sync_mod = getattr(self.sincronizador, "ultima_modificacao", None)
             
             # Se mudou em relação ao que temos cacheado na GUI
-            if sync_ts and sync_ts != self._ultima_atualizacao_planilhas:
+            if sync_mod and sync_mod != self._ultima_modificacao_gui:
+                self._ultima_modificacao_gui = sync_mod
+                
                 # Puxa os dados para a thread principal (GUI)
-                # Como self.sincronizador.df_exec é thread-safe (lockado na escrita), leitura é tranquila em Python (GIL ajuda, mas copy é bom)
-                # O Sincronizador usa lock na escrita, aqui lemos a referencia.
-                
-                # Atualiza referências locais
-                self._ultima_atualizacao_planilhas = sync_ts
-                self._proxima_atualizacao_planilhas = getattr(self.sincronizador, "proxima_execucao", None)
-                
                 df_e = getattr(self.sincronizador, "df_exec", pd.DataFrame())
                 df_r = getattr(self.sincronizador, "df_reg", pd.DataFrame())
                 
-                # Chama atualização da GUI (agora estamos na thread da GUI, pois timer_gui rodou aqui)
+                # Chama atualização da GUI
                 self.atualizar_dados(df_e, df_r)
                 
-            # Atualiza status visual de data/hora (label) mesmo se nao mudou dados (para contagem regressiva se tiver)
-            u = self._ultima_atualizacao_planilhas
+            # Atualiza status visual de data/hora (label) usando o tempo REAL do sync BQ
+            u = getattr(self.sincronizador, "ultima_execucao", None)
             p = getattr(self.sincronizador, "proxima_execucao", None)
             if u or p:
                 self.atualizar_status_planilhas(u, p)
