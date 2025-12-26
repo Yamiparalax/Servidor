@@ -616,7 +616,6 @@ import shutil
 import webbrowser
 
 def setup_frontend():
-def setup_frontend():
     # 0. AUTO-CONFIG: Node Portable (Extract to TEMP to avoid Path Length issues)
     # Using a short path in %TEMP% ensures we don't hit 260 char limit
     temp_dir = Path(os.getenv("TEMP")) / "cronpython_node"
