@@ -185,6 +185,7 @@ class EngineWorker(QThread):
     scripts_discovered = Signal(dict)
     status_update = Signal(str, str, str, str, bool) # path, status, last_run_txt, next_run_txt, is_running
     monitor_update = Signal(list, list) # active, upcoming
+    discovery_timing = Signal(float, float) # last_ts, next_ts
 
     def __init__(self):
         super().__init__()
@@ -416,6 +417,7 @@ class EngineWorker(QThread):
             if now - self.last_discovery > 60:
                 self.discover()
                 self.last_discovery = now
+                self.discovery_timing.emit(self.last_discovery, self.last_discovery + 60)
                 
             # BQ Sync (every 10m)
             if now - self.last_bq_sync > self.bq_sync_interval:
@@ -868,7 +870,14 @@ class MainWindow(QMainWindow):
         self.worker.scripts_discovered.connect(self.on_discovery)
         self.worker.status_update.connect(self.on_status_update)
         self.worker.monitor_update.connect(self.on_monitor_update)
+        self.worker.discovery_timing.connect(self.on_discovery_timing) # NEW
         self.worker.start()
+        
+        # Countdown Timer (Independent of Backend)
+        self.next_discovery_ts = 0
+        self.timer_countdown = QTimer(self)
+        self.timer_countdown.timeout.connect(self.update_countdown)
+        self.timer_countdown.start(1000) # 1s tick
 
         # UI
         central = QWidget()
@@ -919,7 +928,17 @@ class MainWindow(QMainWindow):
         side_vbox.addWidget(self.btn_monitor)
         side_vbox.addWidget(self.btn_autos)
 
+        side_vbox.addWidget(self.btn_autos)
+
         side_vbox.addStretch()
+
+        # Update Countdown Label
+        self.lbl_countdown = QLabel("Next Update: --")
+        self.lbl_countdown.setStyleSheet("color: #4B5563; font-size: 10px; font-weight: 700;")
+        self.lbl_countdown.setAlignment(Qt.AlignCenter)
+        side_vbox.addWidget(self.lbl_countdown)
+        
+        side_vbox.addSpacing(10)
 
         # Disconnect
         btn_disc = QPushButton("    Disconnect")
@@ -1171,8 +1190,32 @@ class MainWindow(QMainWindow):
         if not running_list:
             self.monitor_list.addItem(QListWidgetItem("No active processes."))
         else:
-            for item in running_list:
                 w_item = QListWidgetItem(f"⚡ {item['name']}   —   Running for: {item['duration']}")
+                w_item.setForeground(QColor("#F59E0B"))
+                self.monitor_list.addItem(w_item)
+
+    def on_discovery_timing(self, last, next_ts):
+        self.next_discovery_ts = next_ts
+        self.update_countdown()
+
+    def update_countdown(self):
+        if self.next_discovery_ts == 0:
+            self.lbl_countdown.setText("Initializing...")
+            return
+            
+        remaining = int(self.next_discovery_ts - time.time())
+        if remaining < 0: remaining = 0
+        
+        self.lbl_countdown.setText(f"UPDATE IN: {remaining}s")
+        
+        if remaining < 10:
+             self.lbl_countdown.setStyleSheet("color: #F59E0B; font-size: 10px; font-weight: 800;")
+        else:
+             self.lbl_countdown.setStyleSheet("color: #4B5563; font-size: 10px; font-weight: 700;")
+             
+    def closeEvent(self, event):
+        self.worker.stop()
+        event.accept()
                 w_item.setForeground(QColor("#34D399"))
                 w_item.setFont(QFont("Segoe UI", 12, QFont.Bold))
                 self.monitor_list.addItem(w_item)
