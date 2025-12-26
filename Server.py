@@ -561,10 +561,20 @@ if LIBS_OK:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+if LIBS_OK:
+    app = FastAPI()
+    
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 else:
     app = None
 
-engine = HeadlessEngine()
+# engine = HeadlessEngine() # MOVED TO MAIN BLOCK
 
 class RunRequest(BaseModel):
     path: str
@@ -753,7 +763,11 @@ if __name__ == "__main__":
         print("Aborting server startup as requested.")
         sys.exit(1)
 
-    # 3. Start Frontend Background Process
+    # 3. Start Backend Engine (NOW safe to start)
+    print("Initializing Backend Engine...")
+    engine = HeadlessEngine()
+
+    # 4. Start Frontend Background Process
     frontend_proc = None
     if frontend_ok:
         try:
