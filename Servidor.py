@@ -203,8 +203,8 @@ class EngineWorker(QThread):
         self.daily_execution_cache = defaultdict(int) # script_name -> count_today
         self.history_df = pd.DataFrame()
         
-        self.PROJECT_ID = "datalab-pagamentos"
-        self.DATASET = "ADMINISTRACAO_CELULA_PYTHON"
+        self.PROJECT_ID = os.getenv("GOOGLE_CLOUD_PROJECT", "datalab-pagamentos")
+        self.DATASET = os.getenv("BIGQUERY_DATASET", "ADMINISTRACAO_CELULA_PYTHON")
         self.TABLE_EXEC = "automacoes_exec"
         
         self.bq_verified = False # Safety flag
@@ -281,7 +281,8 @@ class EngineWorker(QThread):
             """
             
             # Using pandas_gbq
-            new_df = pd.read_gbq(query, project_id=self.PROJECT_ID, use_bqstorage_api=False)
+            import pandas_gbq
+            new_df = pandas_gbq.read_gbq(query, project_id=self.PROJECT_ID, use_bqstorage_api=False)
             
             if not new_df.empty:
                 self.history_df = new_df
