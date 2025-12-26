@@ -20,18 +20,8 @@ try:
     LIBS_OK = True
 except ImportError:
     LIBS_OK = False
-    print("AVISO: Bibliotecas faltando. O servidor tentará instalar automaticamente.")
-    
-    # Dummy classes to prevent crash during parsing of routes
-    class BaseModel: pass
-    class DummyApp:
-        def add_middleware(self, *args, **kwargs): pass
-        def get(self, *args, **kwargs): return lambda func: func
-        def post(self, *args, **kwargs): return lambda func: func
-    
-    # Mock FastAPI class
-    def FastAPI(): return DummyApp()
-    class CORSMiddleware: pass # Dummy
+    class BaseModel: pass # Dummy
+    print("AVISO: Bibliotecas Python faltando. O servidor nao iniciara corretamente.")
 
 # Pandas Logic (same as Servidor.py)
 try:
@@ -656,16 +646,9 @@ def start_frontend_process():
 if __name__ == "__main__":
     # 1. Check Python Libs
     if not LIBS_OK:
-        print("Bibliotecas criticas (FastAPI/Uvicorn) nao encontradas.")
-        print("Tentando instalar via install_requirements_proxy.bat...")
-        try:
-             # Tenta rodar o bat de install
-             subprocess.check_call("install_requirements_proxy.bat", shell=True)
-             print("Instalacao concluida. Reinicie o servidor.")
-             sys.exit(0)
-        except Exception as e:
-             print(f"Falha na auto-instalacao: {e}")
-             sys.exit(1)
+        print("ERRO CRITICO: Bibliotecas Python faltando (FastAPI, Uvicorn, Pandas).")
+        print("Por favor, instale as dependencias: pip install -r requirements.txt")
+        sys.exit(1)
 
     # 2. Setup Frontend (npm install)
     frontend_ok = False
