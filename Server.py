@@ -713,34 +713,33 @@ def setup_frontend():
 
 def start_frontend_process():
     frontend_dir = Path.cwd() / "web_frontend"
+    vite_path = frontend_dir / "node_modules" / "vite" / "bin" / "vite.js"
     
-    # Check TEMP location first
-    temp_dir = Path(os.getenv("TEMP")) / "cronpython_node"
+    # 1. Determine Node Executable (Temp or Portable)
     node_exe = None
-    npm_cli = None
+    temp_dir = Path(os.getenv("TEMP")) / "cronpython_node"
     
+    # Check Temp
     found_node = list(temp_dir.rglob("node.exe"))
     if found_node:
         node_exe = found_node[0]
-        found_npm = list(node_exe.parent.rglob("npm-cli.js"))
-        if found_npm:
-            npm_cli = found_npm[0]
-
-    if node_exe and npm_cli:
-        print(f"Starting Web Frontend via Direct Node (Temp): {node_exe} {npm_cli} run dev")
-        return subprocess.Popen([str(node_exe), str(npm_cli), "run", "dev"], cwd=frontend_dir)
+    else:
+        # Check Project Binaries
+        portable_node = Path.cwd() / "binaries" / "node" / "node.exe"
+        if portable_node.exists():
+            node_exe = portable_node
     
-    # Fallback checks (Project dir or System)
-    portable_node = Path.cwd() / "binaries" / "node"
-    if portable_node.exists() and (portable_node / "node.exe").exists():
-         node_exe = portable_node / "node.exe"
-         npm_cli = portable_node / "node_modules" / "npm" / "bin" / "npm-cli.js"
-         return subprocess.Popen([str(node_exe), str(npm_cli), "run", "dev"], cwd=frontend_dir)
+    # 2. Launch Vite Directly (Bypasses system PATH issues)
+    if node_exe and vite_path.exists():
+        print(f"Starting Vite Directly: {node_exe} {vite_path}")
+        # Add host flag to ensure it's accessible
+        return subprocess.Popen([str(node_exe), str(vite_path), "--host"], cwd=frontend_dir)
 
     elif shutil.which("npm"):
          print("Starting Web Frontend via System NPM...")
          return subprocess.Popen("npm run dev", shell=True, cwd=frontend_dir)
          
+    print("CRITICAL: Node.exe or Vite not found. Cannot start frontend.")
     return None
 
 if __name__ == "__main__":
