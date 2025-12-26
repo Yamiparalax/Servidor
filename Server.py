@@ -617,40 +617,63 @@ import webbrowser
 
 def setup_frontend():
     # 0. AUTO-CONFIG: Node Portable (if exists)
-    # This ensures it works even if user runs 'python Server.py' directly/manually
     portable_node = Path.cwd() / "binaries" / "node"
+    node_exe = None
+    npm_cli = None
+    
     if portable_node.exists():
         print(f"Auto-Config: Found Portable Node at {portable_node}")
-        # Add to PATH for this process
+        # Add to PATH (still useful for other things)
         os.environ["PATH"] = str(portable_node) + os.pathsep + os.environ["PATH"]
-        # Bypass SSL for Corp Network
         os.environ["NODE_TLS_REJECT_UNAUTHORIZED"] = "0"
-    
-    # Check if npm is now available
-    if not shutil.which("npm"):
-        print("WARNING: Node.js (npm) not found. Frontend cannot be installed/started.")
-        print("To fix: Install Node.js or download the portable version and add to PATH.")
-        return False
-
+        
+        node_exe = portable_node / "node.exe"
+        npm_cli = portable_node / "node_modules" / "npm" / "bin" / "npm-cli.js"
+        
+    # Check if npm is now available (or if we have direct paths)
+    if not npm_cli or not npm_cli.exists():
+        # Fallback to system npm if portable not found/broken
+        if not shutil.which("npm"):
+             print("WARNING: Node.js (npm) not found. Frontend cannot be installed.")
+             return False
+        # Use system npm (shell=True)
+        npm_command = "npm"
+    else:
+        # Use Direct Node Execution (Bypass npm.cmd issues with paths)
+        print(f"Using Direct NPM: {node_exe} {npm_cli}")
+        npm_command = None # We will use list format
+        
     frontend_dir = Path.cwd() / "web_frontend"
     node_modules = frontend_dir / "node_modules"
     
     if not node_modules.exists():
         print("Installing Frontend Dependencies (this happens only once)...")
-        # Shell=True needed for npm on windows
-        subprocess.check_call("npm install", shell=True, cwd=frontend_dir)
+        if npm_command:
+            subprocess.check_call("npm install", shell=True, cwd=frontend_dir)
+        else:
+            # Direct: node.exe npm-cli.js install
+            subprocess.check_call([str(node_exe), str(npm_cli), "install"], cwd=frontend_dir)
     else:
         print("Frontend dependencies already installed.")
     return True
 
 def start_frontend_process():
-    if not shutil.which("npm"):
-         return None
-
     frontend_dir = Path.cwd() / "web_frontend"
-    print("Starting Web Frontend (npm run dev)...")
-    # Popen to run in background
-    return subprocess.Popen("npm run dev", shell=True, cwd=frontend_dir)
+    
+    portable_node = Path.cwd() / "binaries" / "node"
+    if portable_node.exists():
+        node_exe = portable_node / "node.exe"
+        npm_cli = portable_node / "node_modules" / "npm" / "bin" / "npm-cli.js"
+        
+        print(f"Starting Web Frontend via Direct Node: {node_exe} {npm_cli} run dev")
+        # Run directly: node npm-cli.js run dev
+        return subprocess.Popen([str(node_exe), str(npm_cli), "run", "dev"], cwd=frontend_dir)
+    
+    elif shutil.which("npm"):
+         print("Starting Web Frontend via System NPM...")
+         return subprocess.Popen("npm run dev", shell=True, cwd=frontend_dir)
+         
+    return None
 
 if __name__ == "__main__":
     # 1. Check Python Libs
@@ -663,9 +686,14 @@ if __name__ == "__main__":
     frontend_ok = False
     try:
         frontend_ok = setup_frontend()
+        if not frontend_ok:
+            print("CRITICAL: Frontend setup failed (Node/NPM missing or install error).")
+            print("Aborting server startup as requested.")
+            sys.exit(1)
     except Exception as e:
-        print(f"Failed to setup frontend: {e}")
-        print("Please ensure Node.js is installed.")
+        print(f"CRITICAL: Failed to setup frontend: {e}")
+        print("Aborting server startup as requested.")
+        sys.exit(1)
 
     # 3. Start Frontend Background Process
     frontend_proc = None
