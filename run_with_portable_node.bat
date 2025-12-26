@@ -34,7 +34,7 @@ if exist "node_bin" (
     
 ) else (
     echo [AVISO] Nao foi possivel instalar o Node.js.
-    echo O servidor rodara em modo API-ONLY (sem interface bonitinha).
+    echo O servidor rodara em modo API-ONLY [sem interface bonitinha].
 )
 
 echo.
