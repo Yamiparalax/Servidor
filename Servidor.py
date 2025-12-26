@@ -186,6 +186,7 @@ class EngineWorker(QThread):
     status_update = Signal(str, str, str, str, bool) # path, status, last_run_txt, next_run_txt, is_running
     monitor_update = Signal(list, list) # active, upcoming
     discovery_timing = Signal(float, float) # last_ts, next_ts
+    bq_timing = Signal(float, float) # last_ts, next_ts
 
     def __init__(self):
         super().__init__()
@@ -423,6 +424,7 @@ class EngineWorker(QThread):
             if now - self.last_bq_sync > self.bq_sync_interval:
                 self.sync_bq()
                 self.last_bq_sync = now
+                self.bq_timing.emit(self.last_bq_sync, self.last_bq_sync + self.bq_sync_interval)
                 
             # Scheduler logic
             self.check_schedule_logic()
@@ -870,11 +872,13 @@ class MainWindow(QMainWindow):
         self.worker.scripts_discovered.connect(self.on_discovery)
         self.worker.status_update.connect(self.on_status_update)
         self.worker.monitor_update.connect(self.on_monitor_update)
-        self.worker.discovery_timing.connect(self.on_discovery_timing) # NEW
+        self.worker.discovery_timing.connect(self.on_discovery_timing)
+        self.worker.bq_timing.connect(self.on_bq_timing)
         self.worker.start()
         
         # Countdown Timer (Independent of Backend)
         self.next_discovery_ts = 0
+        self.next_bq_ts = 0
         self.timer_countdown = QTimer(self)
         self.timer_countdown.timeout.connect(self.update_countdown)
         self.timer_countdown.start(1000) # 1s tick
@@ -928,15 +932,21 @@ class MainWindow(QMainWindow):
         side_vbox.addWidget(self.btn_monitor)
         side_vbox.addWidget(self.btn_autos)
 
-        side_vbox.addWidget(self.btn_autos)
+
 
         side_vbox.addStretch()
 
-        # Update Countdown Label
-        self.lbl_countdown = QLabel("Next Update: --")
-        self.lbl_countdown.setStyleSheet("color: #4B5563; font-size: 10px; font-weight: 700;")
-        self.lbl_countdown.setAlignment(Qt.AlignCenter)
-        side_vbox.addWidget(self.lbl_countdown)
+        # Update Countdown 1: Discovery
+        self.lbl_countdown_disc = QLabel("Discovery: --")
+        self.lbl_countdown_disc.setStyleSheet("color: #4B5563; font-size: 10px; font-weight: 700;")
+        self.lbl_countdown_disc.setAlignment(Qt.AlignCenter)
+        side_vbox.addWidget(self.lbl_countdown_disc)
+        
+        # Update Countdown 2: BigQuery
+        self.lbl_countdown_bq = QLabel("BigQuery: --")
+        self.lbl_countdown_bq.setStyleSheet("color: #4B5563; font-size: 10px; font-weight: 700;")
+        self.lbl_countdown_bq.setAlignment(Qt.AlignCenter)
+        side_vbox.addWidget(self.lbl_countdown_bq)
         
         side_vbox.addSpacing(10)
 
@@ -1197,21 +1207,37 @@ class MainWindow(QMainWindow):
     def on_discovery_timing(self, last, next_ts):
         self.next_discovery_ts = next_ts
         self.update_countdown()
+        
+    def on_bq_timing(self, last, next_ts):
+        self.next_bq_ts = next_ts
+        self.update_countdown()
 
     def update_countdown(self):
+        # 1. Discovery
         if self.next_discovery_ts == 0:
-            self.lbl_countdown.setText("Initializing...")
-            return
-            
-        remaining = int(self.next_discovery_ts - time.time())
-        if remaining < 0: remaining = 0
-        
-        self.lbl_countdown.setText(f"UPDATE IN: {remaining}s")
-        
-        if remaining < 10:
-             self.lbl_countdown.setStyleSheet("color: #F59E0B; font-size: 10px; font-weight: 800;")
+            self.lbl_countdown_disc.setText("Scan: Init...")
         else:
-             self.lbl_countdown.setStyleSheet("color: #4B5563; font-size: 10px; font-weight: 700;")
+            rem_d = int(self.next_discovery_ts - time.time())
+            if rem_d < 0: rem_d = 0
+            self.lbl_countdown_disc.setText(f"SCAN: {rem_d}s")
+            
+            if rem_d < 10:
+                self.lbl_countdown_disc.setStyleSheet("color: #F59E0B; font-size: 10px; font-weight: 800;")
+            else:
+                self.lbl_countdown_disc.setStyleSheet("color: #4B5563; font-size: 10px; font-weight: 700;")
+
+        # 2. BigQuery
+        if self.next_bq_ts == 0:
+            self.lbl_countdown_bq.setText("BQ: Init...")
+        else:
+            rem_b = int(self.next_bq_ts - time.time())
+            if rem_b < 0: rem_b = 0
+            self.lbl_countdown_bq.setText(f"BQ SYNC: {rem_b}s")
+            
+            if rem_b < 10:
+                self.lbl_countdown_bq.setStyleSheet("color: #3B82F6; font-size: 10px; font-weight: 800;")
+            else:
+                self.lbl_countdown_bq.setStyleSheet("color: #4B5563; font-size: 10px; font-weight: 700;")
              
 
 
