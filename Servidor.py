@@ -937,7 +937,7 @@ class MainWindow(QMainWindow):
         side_vbox.addStretch()
 
         # Update Countdown 1: Discovery
-        self.lbl_countdown_disc = QLabel("Discovery: --")
+        self.lbl_countdown_disc = QLabel("Excel Update: --")
         self.lbl_countdown_disc.setStyleSheet("color: #4B5563; font-size: 10px; font-weight: 700;")
         self.lbl_countdown_disc.setAlignment(Qt.AlignCenter)
         side_vbox.addWidget(self.lbl_countdown_disc)
@@ -1200,9 +1200,22 @@ class MainWindow(QMainWindow):
         if not running_list:
             self.monitor_list.addItem(QListWidgetItem("No active processes."))
         else:
+            for item in running_list:
                 w_item = QListWidgetItem(f"⚡ {item['name']}   —   Running for: {item['duration']}")
                 w_item.setForeground(QColor("#F59E0B"))
                 self.monitor_list.addItem(w_item)
+        
+        # Show Upcoming
+        if upcoming:
+             self.monitor_list.addItem(QListWidgetItem("")) # Spacer
+             header = QListWidgetItem("--- UPCOMING ---")
+             header.setForeground(QColor("#6B7280"))
+             self.monitor_list.addItem(header)
+             
+             for item in upcoming:
+                 w_item = QListWidgetItem(f"🕒 {item['name']}   (Next: {item['hour']}:00)")
+                 w_item.setForeground(QColor("#9CA3AF"))
+                 self.monitor_list.addItem(w_item)
 
     def on_discovery_timing(self, last, next_ts):
         self.next_discovery_ts = next_ts
@@ -1215,11 +1228,11 @@ class MainWindow(QMainWindow):
     def update_countdown(self):
         # 1. Discovery
         if self.next_discovery_ts == 0:
-            self.lbl_countdown_disc.setText("Scan: Init...")
+            self.lbl_countdown_disc.setText("Excel Update: Init...")
         else:
             rem_d = int(self.next_discovery_ts - time.time())
             if rem_d < 0: rem_d = 0
-            self.lbl_countdown_disc.setText(f"SCAN: {rem_d}s")
+            self.lbl_countdown_disc.setText(f"EXCEL UPDATE: {rem_d}s")
             
             if rem_d < 10:
                 self.lbl_countdown_disc.setStyleSheet("color: #F59E0B; font-size: 10px; font-weight: 800;")
