@@ -168,7 +168,11 @@ class HeadlessEngine:
                 WHERE DATE(start_time) = CURRENT_DATE('America/Sao_Paulo')
             """
             # Using pandas_gbq
-            new_df = pd.read_gbq(query, project_id=self.PROJECT_ID, use_bqstorage_api=False)
+            if PANDAS_AVAIL:
+                import pandas_gbq
+                new_df = pandas_gbq.read_gbq(query, project_id=self.PROJECT_ID, use_bqstorage_api=False)
+            else:
+                 new_df = pd.DataFrame() # Should not happen due to check above
             
             if not new_df.empty:
                 self.history_df = new_df
@@ -181,7 +185,7 @@ class HeadlessEngine:
                 # Today is empty. perform SAFETY CHECK (Health Verification)
                 print("Today is empty. Verifying table health...")
                 check_query = f"SELECT script_name FROM `{self.PROJECT_ID}.{self.DATASET}.{self.TABLE_EXEC}` LIMIT 1"
-                check_df = pd.read_gbq(check_query, project_id=self.PROJECT_ID, use_bqstorage_api=False)
+                check_df = pandas_gbq.read_gbq(check_query, project_id=self.PROJECT_ID, use_bqstorage_api=False)
                 
                 if not check_df.empty:
                     self.bq_verified = True
@@ -597,7 +601,15 @@ def install_py_libs():
     required = ["fastapi", "uvicorn", "pandas", "pandas-gbq", "google-auth"]
     subprocess.check_call([sys.executable, "-m", "pip", "install", *required])
 
+import shutil
+import webbrowser
+
 def setup_frontend():
+    if not shutil.which("npm"):
+        print("WARNING: Node.js (npm) not found. Frontend cannot be installed/started.")
+        print("To fix: Install Node.js or download the portable version and add to PATH.")
+        return False
+
     frontend_dir = Path.cwd() / "web_frontend"
     node_modules = frontend_dir / "node_modules"
     
@@ -607,8 +619,12 @@ def setup_frontend():
         subprocess.check_call("npm install", shell=True, cwd=frontend_dir)
     else:
         print("Frontend dependencies already installed.")
+    return True
 
 def start_frontend_process():
+    if not shutil.which("npm"):
+         return None
+
     frontend_dir = Path.cwd() / "web_frontend"
     print("Starting Web Frontend (npm run dev)...")
     # Popen to run in background
@@ -620,23 +636,37 @@ if __name__ == "__main__":
         import fastapi
         import uvicorn
         import pandas
+        import pandas_gbq
     except ImportError:
         install_py_libs()
-        # Re-import not strictly needed as we run normally now, but good for safety
         
     # 2. Setup Frontend (npm install)
+    frontend_ok = False
     try:
-        setup_frontend()
+        frontend_ok = setup_frontend()
     except Exception as e:
         print(f"Failed to setup frontend: {e}")
         print("Please ensure Node.js is installed.")
 
     # 3. Start Frontend Background Process
     frontend_proc = None
-    try:
-        frontend_proc = start_frontend_process()
-    except Exception as e:
-        print(f"Failed to start frontend: {e}")
+    if frontend_ok:
+        try:
+            frontend_proc = start_frontend_process()
+        except Exception as e:
+            print(f"Failed to start frontend: {e}")
+            
+    # Auto-Open Browser Logic
+    def open_browser():
+        time.sleep(3) # Wait for servers to start
+        if frontend_proc:
+            print("Opening Web Interface...")
+            webbrowser.open("http://localhost:5173")
+        else:
+            print("NPM missing or Frontend failed. Opening API Docs instead...")
+            webbrowser.open("http://localhost:8000/docs")
+
+    threading.Thread(target=open_browser, daemon=True).start()
 
     # 4. Start Backend API
     print("Starting Backend API...")
