@@ -616,8 +616,21 @@ import shutil
 import webbrowser
 
 def setup_frontend():
-    # 0. AUTO-CONFIG: Node Portable (if exists)
+    # 0. AUTO-CONFIG: Node Portable
     portable_node = Path.cwd() / "binaries" / "node"
+    portable_zip = Path.cwd() / "binaries" / "node_bundle.zip"
+    
+    # Auto-Extract if missing
+    if not portable_node.exists() and portable_zip.exists():
+        print("Extracting Node.js binaries (First Run)...")
+        import zipfile
+        try:
+             with zipfile.ZipFile(portable_zip, 'r') as zip_ref:
+                 zip_ref.extractall(Path.cwd() / "binaries")
+             print("Extraction Complete.")
+        except Exception as e:
+             print(f"Failed to extract Node.js: {e}")
+
     node_exe = None
     npm_cli = None
     

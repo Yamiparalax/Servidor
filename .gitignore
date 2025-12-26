@@ -19,4 +19,4 @@ venv/
 env/
 
 # Allow binaries/node despite generally ignoring binaries locally
-!binaries/node/
+!binaries/node_bundle.zip
