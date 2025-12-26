@@ -616,9 +616,18 @@ import shutil
 import webbrowser
 
 def setup_frontend():
-    # Check portable first
-    portable_node = Path("binaries/node")
-    if not shutil.which("npm") and not portable_node.exists():
+    # 0. AUTO-CONFIG: Node Portable (if exists)
+    # This ensures it works even if user runs 'python Server.py' directly/manually
+    portable_node = Path.cwd() / "binaries" / "node"
+    if portable_node.exists():
+        print(f"Auto-Config: Found Portable Node at {portable_node}")
+        # Add to PATH for this process
+        os.environ["PATH"] = str(portable_node) + os.pathsep + os.environ["PATH"]
+        # Bypass SSL for Corp Network
+        os.environ["NODE_TLS_REJECT_UNAUTHORIZED"] = "0"
+    
+    # Check if npm is now available
+    if not shutil.which("npm"):
         print("WARNING: Node.js (npm) not found. Frontend cannot be installed/started.")
         print("To fix: Install Node.js or download the portable version and add to PATH.")
         return False
