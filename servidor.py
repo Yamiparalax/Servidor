@@ -88,6 +88,8 @@ class EngineWorker(threading.Thread):
         # Data
         self.history_df = pd.DataFrame()
         self.bq_verified = False
+        self.last_finish_times = {}
+        self.task_start_times = {} # Track when tasks started
 
     def run(self):
         # Initial Discovery MUST happen before BQ Sync
@@ -303,6 +305,8 @@ class EngineWorker(threading.Thread):
             self.daily_execution_cache[name] += 1
             self.last_finish_times[name] = time.time() # Record finish time for cooldown
             del self.running_tasks[name]
+            if name in self.task_start_times:
+                del self.task_start_times[name]
             
         MAX_CONCURRENT = 5
         while (len(self.running_tasks) < MAX_CONCURRENT) and self.execution_queue:
@@ -324,6 +328,7 @@ class EngineWorker(threading.Thread):
                 creationflags=subprocess.CREATE_NO_WINDOW if sys.platform=='win32' else 0
             )
             self.running_tasks[name] = proc
+            self.task_start_times[name] = time.time()
         except Exception as e:
             print(f"Run Error {name}: {e}")
 

@@ -188,6 +188,7 @@ class MainWindow(QMainWindow):
         t.setStyleSheet("color: #64748b; font-size: 10px; font-weight: bold;")
         
         v = QLabel(value)
+        v.setObjectName("StatValue") # Tag for updates
         v.setAlignment(Qt.AlignCenter)
         v.setStyleSheet("color: white; font-size: 18px; font-weight: 900;")
         
@@ -249,26 +250,28 @@ class MainWindow(QMainWindow):
         search_txt = self.search_inp.text().lower()
         
         for name, card in self.cards.items():
-            if search_txt and search_txt not in name:
-                continue
-                
             config = self.worker.scripts_config.get(name, {})
-            area = config.get('area', 'GERAL')
-            
-            # MONITOR LOGIC: active or scheduled only?
-            # User request: "Monitor apenas as informacoes dos scripts que estão em execucao naquele momento"
-            # And also "Schedule"? Usually Monitor implies "Active things".
+            c_area = config.get('area', 'GERAL')
             
             show = False
-            if self.active_filter == "MONITOR":
-                # Show only if Running OR Scheduled/Queued
-                is_running = name in self.worker.running_tasks
-                is_queued = any(item[1] == name for item in self.worker.execution_queue)
-                if is_running or is_queued:
+            
+            # Global Search Override
+            if search_txt:
+                if search_txt in name:
                     show = True
-            elif area == self.active_filter:
-                show = True
-                
+            else:
+                # Normal Filter Logic
+                if self.active_filter == "MONITOR":
+                    # Monitor logic: Running or Scheduled
+                    is_running = name in self.worker.running_tasks
+                    is_scheduled = any(i[1] == name for i in self.worker.execution_queue)
+                    if is_running or is_scheduled:
+                        show = True
+                elif self.active_filter == "ALL":
+                     show = True
+                elif c_area == self.active_filter:
+                    show = True
+            
             if show:
                 visible_cards.append(card)
         
@@ -296,22 +299,26 @@ class MainWindow(QMainWindow):
         
         # 1. Update Timers
         now = datetime.now()
-        # BQ
+        # BQ (Countdown)
         elapsed_bq = (now.timestamp() - self.worker.last_bq_sync) if self.worker.last_bq_sync else 0
-        self.timer_bq.update_timer(elapsed_bq, self.worker.bq_sync_interval)
+        rem_bq = max(0, self.worker.bq_sync_interval - elapsed_bq)
+        self.timer_bq.update_timer(rem_bq, self.worker.bq_sync_interval)
         
-        # Discovery
+        # Discovery (Countdown)
         elapsed_disc = (now.timestamp() - self.worker.last_discovery) if self.worker.last_discovery else 0
-        self.timer_disc.update_timer(elapsed_disc, 60)
+        rem_disc = max(0, 60 - elapsed_disc)
+        self.timer_disc.update_timer(rem_disc, 60)
         
         # 2. Update Stats Boxes
         q_len = len(self.worker.execution_queue)
         t_len = len(self.worker.running_tasks)
-        self.stat_fila.findChild(QLabel, "").setText(str(q_len)) # Assuming 2nd label is value
-        # Actually finding child by type might be risky if order changes. 
-        # Better to keep reference? doing naive update for now.
-        self.stat_fila.layout().itemAt(1).widget().setText(str(q_len))
-        self.stat_threads.layout().itemAt(1).widget().setText(f"{t_len}/5")
+        
+        # Safe Child Lookup
+        val_fila = self.stat_fila.findChild(QLabel, "StatValue")
+        if val_fila: val_fila.setText(str(q_len))
+        
+        val_threads = self.stat_threads.findChild(QLabel, "StatValue")
+        if val_threads: val_threads.setText(f"{t_len}/5")
         
         # 3. Dynamic Filters
         if not self.dynamic_filters_initialized and self.worker.scripts_config:
@@ -338,55 +345,62 @@ class MainWindow(QMainWindow):
         
         if needs_layout_update:
             self.refresh_grid_visibility()
+        elif self.active_filter == "MONITOR":
+            # Force refresh to handle state changes (e.g. IDLE -> RUNNING)
+            # which are crucial for Monitor view but don't change 'scripts_map' keys
+            self.refresh_grid_visibility()
 
         # Update Card Data
         for name, card in self.cards.items():
-             config = self.worker.scripts_config.get(name, {})
+            config = self.worker.scripts_config.get(name, {})
+            
+            status = "IDLE"
+            if name in self.worker.running_tasks: status = "RUNNING"
+            elif any(item[1] == name for item in self.worker.execution_queue): status = "SCHEDULED"
+            else:
+                if not self.worker.history_df.empty:
+                    runs = self.worker.history_df[self.worker.history_df['script_name'] == name]
+                    if not runs.empty:
+                        lr = runs.iloc[-1]['status'].upper()
+                        if 'SUCCESS' in lr: status = "SUCCESS"
+                        elif 'ERROR' in lr: status = "ERROR"
+
+            cron = config.get('cron')
+            next_run = "Manual"
+            if cron == 'ALL':
+                h = datetime.now().hour
+                next_run = f"{(h+1)%24:02d}:00"
+            elif isinstance(cron, set) and cron:
+                h = datetime.now().hour
+                upcoming = sorted([x for x in cron if x > h])
+                if upcoming: next_run = f"{upcoming[0]:02d}:00"
+                else: next_run = "Amanhã"
              
-             status = "IDLE"
-             if name in self.worker.running_tasks: status = "RUNNING"
-             elif any(item[1] == name for item in self.worker.execution_queue): status = "SCHEDULED"
-             else:
-                 if not self.worker.history_df.empty:
-                     runs = self.worker.history_df[self.worker.history_df['script_name'] == name]
-                     if not runs.empty:
-                         lr = runs.iloc[-1]['status'].upper()
-                         if 'SUCCESS' in lr: status = "SUCCESS"
-                         elif 'ERROR' in lr: status = "ERROR"
+            last_obj = None
+            if not self.worker.history_df.empty:
+                runs = self.worker.history_df[self.worker.history_df['script_name'] == name]
+                if not runs.empty:
+                    r = runs.iloc[-1]
+                    last_obj = {'timestamp': r['start_time'], 'status': r['status']}
+            
+            # Run Duration
+            run_duration = None
+            if status == "RUNNING" and hasattr(self.worker, 'task_start_times'):
+                 start_ts = self.worker.task_start_times.get(name)
+                 if start_ts:
+                     run_duration = time.time() - start_ts
 
-             cron = config.get('cron')
-             next_run = "Manual"
-             if cron == 'ALL':
-                 h = datetime.now().hour
-                 next_run = f"{(h+1)%24:02d}:00"
-             elif isinstance(cron, set) and cron:
-                 h = datetime.now().hour
-                 upcoming = sorted([x for x in cron if x > h])
-                 if upcoming: next_run = f"{upcoming[0]:02d}:00"
-                 else: next_run = "Amanhã"
-             
-             last_obj = None
-             if not self.worker.history_df.empty:
-                 runs = self.worker.history_df[self.worker.history_df['script_name'] == name]
-                 if not runs.empty:
-                     r = runs.iloc[-1]
-                     last_obj = {'timestamp': r['start_time'], 'status': r['status']}
-
-             # If Monitor View and scripts changed state (e.g. stopped running), we might need to refresh layou
-             # But complete refresh every second is expensive. 
-             # For now, just update data. 
-             # TODO: Optimize Monitor Refresh.
-
-             data = {
-                 "name": name,
-                 "area": config.get('area', 'GERAL'),
-                 "status": status,
-                 "daily_runs": self.worker.daily_execution_cache.get(name, 0),
-                 "target_runs": config.get('target_runs', 0),
-                 "next_run": next_run,
-                 "last_exec": last_obj
-             }
-             card.update_data(name, data)
+            data = {
+                "name": name,
+                "area": config.get('area', 'GERAL'),
+                "status": status,
+                "daily_runs": self.worker.daily_execution_cache.get(name, 0),
+                "target_runs": config.get('target_runs', 0),
+                "next_run": next_run,
+                "last_exec": last_obj,
+                "run_duration": run_duration
+            }
+            card.update_data(name, data)
 
         # 5. Right Sidebar (Queue & History)
         self.update_right_sidebar()

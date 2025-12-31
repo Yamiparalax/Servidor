@@ -108,7 +108,13 @@ class ScriptCard(QFrame):
         
         # Status Color
         st = data['status']
-        self.lbl_status.setText(st)
+        
+        display_status = st
+        if st == 'RUNNING' and data.get('run_duration') is not None:
+            display_status = f"RUNNING ({int(data['run_duration'])}s)"
+            
+        self.lbl_status.setText(display_status)
+        
         if st == 'RUNNING':
             self.lbl_status.setStyleSheet("background-color: #1e3a8a; color: #60a5fa;")
             self.btn_run.setDisabled(True)
