@@ -90,6 +90,11 @@ class EngineWorker(threading.Thread):
         self.bq_verified = False
 
     def run(self):
+        # Initial Discovery MUST happen before BQ Sync
+        # otherwise we have no config to match against history.
+        self.discover()
+        self.last_discovery = time.time()
+        
         self.sync_bq()
         self.last_bq_sync = time.time()
         
